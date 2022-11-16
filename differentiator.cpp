@@ -2,12 +2,14 @@
 #include <stdlib.h>
 #include <strings.h>
 #include <ctype.h>
+#include <math.h>
 #include <assert.h>
 
 #include "differentiator.h"
 
-static int iter = 0;
 const int STRSIZE = 20;
+const double PI = 3.1415926589;
+const double E = 2.7182818284;
 
 int DifferentiatorMain(char* input)
 {
@@ -21,10 +23,14 @@ int DifferentiatorMain(char* input)
     Node* newanchor = DiffNode(datatree.anchor);
 
     difftree.anchor = newanchor;
+    difftree.anchor->tree = &difftree;
 
     TreeGraphDump(&difftree, 0, __LINE__, __func__, __FILE__);
 
-    NodePrint(difftree.anchor);
+//    NodePrint(difftree.anchor);
+
+    FILE* out = fopen("out.txt", "w");
+    TeXPrint(difftree.anchor, out);
 
     return NOERR;
 }
@@ -200,9 +206,23 @@ Node* CreateNode(NodeType type, double val, OperType optype, char* varvalue, Nod
     return newnode;
 }
 
-int TeXPrint(Tree* tree, char* output)
+int TeXPrint(Node* node, FILE* out)
 {
-    FILE* out = fopen(output, "w");
+//    TeXDataStartPrint(node, out);
+    if (node->optype != OP_SIN && node->optype != OP_COS && node->optype != OP_UNKNOWN && !node->tree)
+        fprintf(out, "(");
+
+    if (node->leftchild)
+        TeXPrint(node->leftchild, out);
+
+    TeXDataPrint(node, out);
+
+    if (node->rightchild)
+        TeXPrint(node->rightchild, out);
+
+//    TeXDataEndPrint(node, out);
+    if (node->optype != OP_SIN && node->optype != OP_COS && node->optype != OP_UNKNOWN && !node->tree)
+        fprintf(out, ")");
 
     return NOERR;
 }
@@ -211,7 +231,7 @@ int NodePrint(Node* node)
 {
     assert(node != NULL);
 
-    printf(" (");
+    printf("(");
 
     if (node->leftchild)
         NodePrint(node->leftchild);
@@ -221,7 +241,7 @@ int NodePrint(Node* node)
     if (node->rightchild)
         NodePrint(node->rightchild);
 
-    printf(" )");
+    printf(")");
 
     return NOERR;
 }
@@ -231,33 +251,117 @@ int DataPrint(Node* node, FILE* out)
     switch (node->type)
     {
         case NUM_TYPE:
-            fprintf(out, " %.0lf", node->val);
+            fprintf(out, "{%.0lf}", node->val);
             break;
         case VAR_TYPE:
-            fprintf(out, " %s", node->varvalue);
+            fprintf(out, "{%s}", node->varvalue);
             break;
         case OP_TYPE:
             switch (node->optype)
             {
                 case OP_ADD:
-                    fprintf(out, " +");
+                    fprintf(out, "+");
                     break;
                 case OP_SUB:
-                    fprintf(out, " -");
+                    fprintf(out, "-");
                     break;
                 case OP_MUL:
-                    fprintf(out, " *");
+                    fprintf(out, "*");
                     break;
                 case OP_DIV:
-                    fprintf(out, " /");
+                    fprintf(out, "/");
                     break;
                 case OP_COS:
-                    fprintf(out, " cos");
+                    fprintf(out, "cos");
                     break;
                 case OP_SIN:
-                    fprintf(out, " sin");
+                    fprintf(out, "sin");
                     break;
             }
             break;
+    }
+}
+
+int TeXDataPrint(Node* node, FILE* out)
+{
+    switch (node->type)
+    {
+        case NUM_TYPE:
+            fprintf(out, "{%.0lf}", node->val);
+            break;
+        case VAR_TYPE:
+            fprintf(out, "{%s}", node->varvalue);
+            break;
+        case OP_TYPE:
+            switch (node->optype)
+            {
+                case OP_ADD:
+                    fprintf(out, "+");
+                    break;
+                case OP_SUB:
+                    fprintf(out, "-");
+                    break;
+                case OP_MUL:
+                    fprintf(out, "\\cdot");
+                    break;
+                case OP_DIV:
+                    fprintf(out, "\\frac");
+                    break;
+                case OP_COS:
+                    fprintf(out, "cos");
+                    break;
+                case OP_SIN:
+                    fprintf(out, "sin");
+                    break;
+            }
+            break;
+    }
+}
+
+int TeXDataEndPrint(Node* node, FILE* out)
+{
+    if (node->tree)
+        return NOERR;
+
+    switch (node->type)
+    {
+        case NUM_TYPE:
+            break;
+        case VAR_TYPE:
+            break;
+        case OP_TYPE:
+        {
+            if (node->optype == OP_COS)
+                break;
+            else if (node->optype == OP_SIN)
+                break;
+            else
+                fprintf(out, ")");
+            break;
+        }
+    }
+}
+
+int TeXDataStartPrint(Node* node, FILE* out)
+{
+    if (node->tree)
+        return NOERR;
+
+    switch (node->type)
+    {
+        case NUM_TYPE:
+            break;
+        case VAR_TYPE:
+            break;
+        case OP_TYPE:
+        {
+            if (node->optype == OP_COS)
+                break;
+            if (node->optype == OP_SIN)
+                break;
+            else
+                fprintf(out, "(");
+            break;
+        }
     }
 }

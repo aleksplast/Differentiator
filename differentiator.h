@@ -16,11 +16,17 @@ Node* NodeCopy(Node* node);
 
 Node* DiffNode(Node* node);
 
-int TeXPrint(Tree* tree, char* output);
+int TeXPrint(Node* node, FILE* out);
 
 int NodePrint(Node* node);
 
 int DataPrint(Node* node, FILE* out);
+
+int TeXDataStartPrint(Node* node, FILE* out);
+
+int TeXDataEndPrint(Node* node, FILE* out);
+
+int TeXDataPrint(Node* node, FILE* out);
 
 Node* CreateNode(NodeType type, double val, OperType optype, char* varvalue, Node* leftchild, Node* rightchild);
 
