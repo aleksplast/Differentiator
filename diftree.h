@@ -23,11 +23,16 @@ enum OperType
 {
     OP_UNKNOWN      = 0,
     OP_ADD          = 1,
-    OP_MUL,
-    OP_DIV,
-    OP_SUB,
-    OP_SIN,
-    OP_COS,
+    OP_MUL          = 2,
+    OP_DIV          = 3,
+    OP_SUB          = 4,
+    OP_SIN          = 5,
+    OP_COS          = 6,
+    OP_TG           = 7,
+    OP_POWER        = 8,
+    OP_LOG          = 9,
+    OP_LN           = 10,
+    OP_CTG          = 11,
 };
 
 struct Tree;
@@ -66,8 +71,6 @@ int TreeGraphDump (Tree* tree, int errors, int line, const char* func, const cha
 
 int NodeDump(Node* node, int* counter, FILE* pic);
 
-Node* TreeDepthSearch(Tree* tree, Node* node, elem_t searchval);
-
 Node* AddRightChild(Tree* tree, Node* ancestor);
 
 Node* AddLeftChild(Tree* tree, Node* ancestor);
@@ -77,6 +80,8 @@ int TypePrint(FILE* fp, NodeType type);
 int OpTypePrint(FILE* fp, OperType opertype);
 
 int NodeDetor(Tree* tree, Node* node);
+
+Node* TreeDepthSearch(Node* node, char* searchvar);
 
 int TreeDetor(Tree* tree);
 

@@ -213,6 +213,28 @@ int NodeDetor(Tree* tree, Node* node)
     return NOERR;
 }
 
+Node* TreeDepthSearch(Node* node, char* searchvar)
+{
+    assert(node != NULL);
+
+    Node* searchleft = NULL;
+    Node* searchright = NULL;
+
+    if (node->leftchild)
+        searchleft = TreeDepthSearch(node->leftchild, searchvar);
+    if (node->rightchild)
+        searchright = TreeDepthSearch(node->rightchild, searchvar);
+
+    if (stricmp(node->varvalue, searchvar) == 0)
+        return node;
+    else if (searchright)
+        return searchright;
+    else if (searchleft)
+        return searchleft;
+    else
+        return NULL;
+}
+
 int TreeDetor(Tree* tree)
 {
     DBG assert (tree != NULL);
@@ -258,6 +280,16 @@ int OpTypePrint(FILE* fp, OperType opertype)
         fprintf(fp, "%s", "SIN");
     if (opertype == OP_COS)
         fprintf(fp, "%s", "COS");
+    if (opertype == OP_POWER)
+        fprintf(fp, "%s", "^");
+    if (opertype == OP_LOG)
+        fprintf(fp, "%s", "LOG");
+    if (opertype == OP_LN)
+        fprintf(fp, "%s", "LN");
+    if (opertype == OP_TG)
+        fprintf(fp, "%s", "TG");
+    if (opertype == OP_CTG)
+        fprintf(fp, "%s", "CTG");
 
     return NOERR;
 }

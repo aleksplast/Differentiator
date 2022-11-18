@@ -16,7 +16,15 @@ Node* NodeCopy(Node* node);
 
 Node* DiffNode(Node* node);
 
-int TeXPrint(Node* node, FILE* out);
+Node* DiffPower(Node* node);
+
+Node* DiffLog(Node* node);
+
+int TeXPrint(Tree* orig, Tree* difftree, FILE* out);
+
+int PrepareTeXFile(FILE* out);
+
+int TeXNodePrint(Node* node, FILE* out);
 
 int NodePrint(Node* node);
 
@@ -31,5 +39,11 @@ int TeXDataPrint(Node* node, FILE* out);
 Node* CreateNode(NodeType type, double val, OperType optype, char* varvalue, Node* leftchild, Node* rightchild);
 
 OperType IsOper(char* str);
+
+double IsVal(char* str);
+
+bool IsOneArg(Node* node);
+
+int compare(const double a, const double b);
 
 #endif //DIFFERENTIATOR_H

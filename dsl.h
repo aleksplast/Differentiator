@@ -8,4 +8,7 @@
 #define ADD(L, R) CreateNode(OP_TYPE, 0, OP_ADD, NULL, L, R)
 #define SIN(L, R) CreateNode(OP_TYPE, 0, OP_SIN, NULL, L, R)
 #define COS(L, R) CreateNode(OP_TYPE, 0, OP_COS, NULL, L, R)
+#define POWER(L, R) CreateNode(OP_TYPE, 0, OP_POWER, NULL, L, R)
+#define LN(L,R) CreateNode(OP_TYPE, 0, OP_LN, NULL, L, R)
 #define CREATENUM(num) CreateNode(NUM_TYPE, num, OP_UNKNOWN, NULL, NULL, NULL)
+#define CREATEVAR(var) CreateNode(VAR_TYPE, 0, OP_UNKNOWN, #var, NULL, NULL)
