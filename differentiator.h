@@ -36,6 +36,8 @@ int DeleteAnchor (Node* node);
 
 double CalculateNode(Node* node, double x);
 
+int MaclaurinSeries(Tree* tree, FILE* out);
+
 int TeXPrint(Tree* orig, Tree* difftree, FILE* out);
 
 int PrepareTeXFile(FILE* out);
@@ -53,6 +55,8 @@ int TeXDataEndPrint(Node* node, FILE* out);
 int TeXDataPrint(Node* node, FILE* out);
 
 Node* CreateNode(NodeType type, double val, OperType optype, char* varvalue, Node* leftchild, Node* rightchild);
+
+int Factorial(int n);
 
 OperType IsOper(char* str);
 

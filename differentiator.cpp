@@ -19,29 +19,12 @@ int DifferentiatorMain(char* input)
 
     TreeGraphDump(&datatree, 0, __LINE__, __func__, __FILE__);
 
-    Tree difftree = {};
-    char difftreelog[STRSIZE] = "difftreelog.htm";
-    TreeCtor(&difftree, UNKNOWN_TYPE, 0, OP_UNKNOWN, NULL, difftreelog);
-
-    Node* newanchor = DiffNode(datatree.anchor);
-
-    double x = 0;
-    scanf("%lg", &x);
-
-    difftree.anchor = newanchor;
-    difftree.anchor->tree = &difftree;
-
-    CreateAncestor(difftree.anchor, NULL, &difftree);
-    SimplifyFunc(&difftree);
-
-    TreeGraphDump(&difftree, 0, __LINE__, __func__, __FILE__);
-    printf("func = %lg\n", CalculateNode(datatree.anchor, x));
-    printf("derivative = %lg\n", CalculateNode(difftree.anchor, x));
-
 //    NodePrint(difftree.anchor);
 
     FILE* out = fopen("out.txt", "w");
-    TeXPrint(&datatree, &difftree, out);
+
+    PrepareTeXFile(out);
+    MaclaurinSeries(&datatree, out);
 
     return NOERR;
 }
@@ -356,6 +339,8 @@ int SimplifyFunc(Tree* tree)
 {
     DBG assert(tree != NULL);
 
+    CHANGE = true;
+
     while (CHANGE)
     {
         SimplifyConstants(tree->anchor);
@@ -406,7 +391,7 @@ int SimplifyConstantNode(Node* node)
         node->rightchild = NULL;
         CHANGE = true;
     }
-    if (node->optype == OP_MUL)
+    else if (node->optype == OP_MUL)
     {
         node->type = NUM_TYPE;
         node->val = node->leftchild->val * node->rightchild->val;
@@ -416,17 +401,7 @@ int SimplifyConstantNode(Node* node)
         node->rightchild = NULL;
         CHANGE = true;
     }
-    if (node->optype == OP_DIV)
-    {
-        node->type = NUM_TYPE;
-        node->val = node->leftchild->val / node->rightchild->val;
-        node->varvalue = NULL;
-        node->optype = OP_UNKNOWN;
-        node->leftchild = NULL;
-        node->rightchild = NULL;
-        CHANGE = true;
-    }
-    if (node->optype == OP_ADD)
+    else if (node->optype == OP_ADD)
     {
         node->type = NUM_TYPE;
         node->val = node->leftchild->val + node->rightchild->val;
@@ -436,7 +411,7 @@ int SimplifyConstantNode(Node* node)
         node->rightchild = NULL;
         CHANGE = true;
     }
-    if (node->optype == OP_POWER)
+    else if (node->optype == OP_POWER)
     {
         node->type = NUM_TYPE;
         node->val = pow(node->leftchild->val, node->rightchild->val);
@@ -611,6 +586,21 @@ int CheckNDeleteNode(Node* node)
         CHANGE = true;
     }
 
+    if (IS_OP(OP_DIV) && IS_LVAL(0))
+    {
+        node->type = NUM_TYPE;
+        node->val = 0;
+        node->varvalue = NULL;
+        node->optype = OP_UNKNOWN;
+        node->leftchild = NULL;
+        node->rightchild = NULL;
+
+        if (node == node->tree->anchor)
+            node->ancestor = NULL;
+
+        CHANGE = true;
+    }
+
     return NOERR;
 }
 
@@ -692,6 +682,78 @@ double CalculateNode(Node* node, double x)
         default:
             return 0;
     }
+}
+
+int MaclaurinSeries(Tree* tree, FILE* out)
+{
+    int order = 0;
+    printf("Enter the order of series\n");
+    scanf("%d", &order);
+
+    Tree difftree = {};
+    char difftreelog[STRSIZE] = "difftreelog.htm";
+    TreeCtor(&difftree, UNKNOWN_TYPE, 0, OP_UNKNOWN, NULL, difftreelog);
+
+    char serieslog[STRSIZE] = "serieslog.htm";
+
+    Tree seriestree = {};
+    TreeCtor(&seriestree, NUM_TYPE, CalculateNode(tree->anchor, 0), OP_UNKNOWN, NULL, serieslog);
+
+    Node* newanchor = DiffNode(tree->anchor);
+
+    difftree.anchor = newanchor;
+    difftree.anchor->tree = &difftree;
+
+    CreateAncestor(difftree.anchor, NULL, &difftree);
+    SimplifyFunc(&difftree);
+
+    Node* seriesanch = ADD(NULL, MUL(CREATENUM(CalculateNode(difftree.anchor, 0)), CREATEVAR(x)));
+    seriesanch->leftchild = seriestree.anchor;
+    seriestree.anchor = seriesanch;
+
+    TreeGraphDump(&difftree, 0, __LINE__, __func__, __FILE__);
+
+    for (int counter = 2; counter <= order; counter++)
+    {
+        newanchor = DiffNode(difftree.anchor);
+
+        difftree.anchor = newanchor;
+        difftree.anchor->tree = &difftree;
+
+        CreateAncestor(difftree.anchor, NULL, &difftree);
+        SimplifyFunc(&difftree);
+
+        TreeGraphDump(&difftree, 0, __LINE__, __func__, __FILE__);
+
+        seriesanch = ADD(NULL, MUL(DIV(CREATENUM(CalculateNode(difftree.anchor, 0)), CREATENUM(Factorial(counter))), POWER(CREATEVAR(x), CREATENUM(counter))));
+        seriesanch->leftchild = seriestree.anchor;
+        seriestree.anchor = seriesanch;
+        seriestree.anchor->tree = &seriestree;
+        TreeGraphDump(&seriestree, 0, __LINE__, __func__, __FILE__);
+
+    }
+
+    CreateAncestor(seriestree.anchor, NULL, &seriestree);
+    SimplifyFunc(&seriestree);
+    TreeGraphDump(&seriestree, 0, __LINE__, __func__, __FILE__);
+
+    fprintf(out, "$$");
+    TeXNodePrint(seriestree.anchor, out);
+    fprintf(out, "$$");
+
+    return NOERR;
+}
+
+int Factorial(int n)
+{
+    if (n < 1)
+        return NOERR;
+    int fact = 1;
+
+    for (int counter = 1; counter <= n; counter++)
+        fact *= counter;
+
+    return fact;
 }
 
 int TeXPrint(Tree* orig, Tree* difftree, FILE* out)
