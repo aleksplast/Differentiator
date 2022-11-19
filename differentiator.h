@@ -34,6 +34,8 @@ int CheckNDeleteNode(Node* node);
 
 int DeleteAnchor (Node* node);
 
+double CalculateNode(Node* node, double x);
+
 int TeXPrint(Tree* orig, Tree* difftree, FILE* out);
 
 int PrepareTeXFile(FILE* out);

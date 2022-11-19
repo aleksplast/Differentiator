@@ -25,6 +25,9 @@ int DifferentiatorMain(char* input)
 
     Node* newanchor = DiffNode(datatree.anchor);
 
+    double x = 0;
+    scanf("%lg", &x);
+
     difftree.anchor = newanchor;
     difftree.anchor->tree = &difftree;
 
@@ -32,6 +35,8 @@ int DifferentiatorMain(char* input)
     SimplifyFunc(&difftree);
 
     TreeGraphDump(&difftree, 0, __LINE__, __func__, __FILE__);
+    printf("func = %lg\n", CalculateNode(datatree.anchor, x));
+    printf("derivative = %lg\n", CalculateNode(difftree.anchor, x));
 
 //    NodePrint(difftree.anchor);
 
@@ -461,15 +466,11 @@ int DeleteMeaninglessNodes(Node* node)
 int CheckNDeleteNode(Node* node)
 {
     DBG assert (node != NULL);
-    printf("HERE\n");
 
     if (node->type != OP_TYPE)
         return NOERR;
     if (!node->leftchild || !node->rightchild)
         return NOERR;
-
-    printf("tree = %p\n", node->tree);
-    printf("optype = %d\n", node->optype);
 
     if (node->rightchild->type == NUM_TYPE && (node->optype == OP_ADD || node->optype == OP_MUL))
     {
@@ -480,7 +481,6 @@ int CheckNDeleteNode(Node* node)
 
     if (IS_OP(OP_MUL) && IS_LVAL(1))
     {
-        printf("MUL1");
         if (node == node->tree->anchor)
             DeleteAnchor(node);
 
@@ -503,7 +503,6 @@ int CheckNDeleteNode(Node* node)
 
     if (IS_OP(OP_MUL) && IS_LVAL(0))
     {
-        printf("MUL2");
         if (node == node->tree->anchor)
         {
             node->type = NUM_TYPE;
@@ -588,7 +587,6 @@ int CheckNDeleteNode(Node* node)
 
     if (IS_OP(OP_POWER) && IS_RVAL(1))
     {
-        printf("here");
         if (node == node->tree->anchor)
         {
             node->tree->anchor = node->leftchild;
@@ -623,6 +621,77 @@ int DeleteAnchor(Node* node)
     node->tree->anchor = node->rightchild;
     free(node);
     free(node->leftchild);
+
+    return NOERR;
+}
+
+double CalculateNode(Node* node, double x)
+{
+    DBG assert(node != NULL);
+
+    switch (node->type)
+    {
+        case NUM_TYPE:
+            return node->val;
+        case VAR_TYPE:
+            switch(*(node->varvalue))
+            {
+                case 'x':
+                    return x;
+                case 'e':
+                    return 1e1;
+                default:
+                    return 0;
+            }
+        case OP_TYPE:
+            switch (node->optype)
+            {
+                case OP_ADD:
+                    return CalculateNode(node->leftchild, x) + CalculateNode(node->rightchild,x);
+                case OP_MUL:
+                    return CalculateNode(node->leftchild, x) * CalculateNode(node->rightchild,x);
+                case OP_DIV:
+                    return CalculateNode(node->leftchild, x) / CalculateNode(node->rightchild,x);
+                case OP_SUB:
+                    return CalculateNode(node->leftchild, x) - CalculateNode(node->rightchild,x);
+                case OP_SIN:
+                    return sin(CalculateNode(node->rightchild, x));
+                case OP_COS:
+                    return cos(CalculateNode(node->rightchild, x));
+                case OP_TG:
+                    return tan(CalculateNode(node->rightchild,x));
+                case OP_POWER:
+                    return pow(CalculateNode(node->leftchild, x), CalculateNode(node->rightchild,x));
+                case OP_LOG:
+                    return (log(CalculateNode(node->rightchild, x)))/(log(CalculateNode(node->leftchild,x)));
+                case OP_LN:
+                    return log(CalculateNode(node->rightchild,x));
+                case OP_CTG:
+                    return 1/(tan(CalculateNode(node->rightchild,x)));
+                case OP_SQRT:
+                    return sqrt(CalculateNode(node->rightchild,x));
+                case OP_ARCCOS:
+                    return acos(CalculateNode(node->rightchild,x));
+                case OP_ARCSIN:
+                    return asin(CalculateNode(node->rightchild,x));
+                case OP_ARCTG:
+                    return atan(CalculateNode(node->rightchild,x));
+                case OP_ARCCTG:
+                    return txPI - atan(CalculateNode(node->rightchild,x));
+                case OP_SH:
+                    return sinh(CalculateNode(node->rightchild,x));
+                case OP_CH:
+                    return cosh(CalculateNode(node->rightchild,x));
+                case OP_UNKNOWN:
+                    return 0;
+                default:
+                    return 0;
+            }
+        case UNKNOWN_TYPE:
+            return 0;
+        default:
+            return 0;
+    }
 }
 
 int TeXPrint(Tree* orig, Tree* difftree, FILE* out)
