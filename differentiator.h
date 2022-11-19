@@ -14,11 +14,25 @@ int FillCurrNode(Node* currnode, char* input);
 
 Node* NodeCopy(Node* node);
 
+int CreateAncestor(Node* node, Node* ancestor, Tree* tree);
+
 Node* DiffNode(Node* node);
 
 Node* DiffPower(Node* node);
 
 Node* DiffLog(Node* node);
+
+int SimplifyConstantNode(Node* node);
+
+int SimplifyConstants(Node* node);
+
+int SimplifyFunc(Tree* tree);
+
+int DeleteMeaninglessNodes(Node* node);
+
+int CheckNDeleteNode(Node* node);
+
+int DeleteAnchor (Node* node);
 
 int TeXPrint(Tree* orig, Tree* difftree, FILE* out);
 

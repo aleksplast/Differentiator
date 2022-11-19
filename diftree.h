@@ -33,6 +33,13 @@ enum OperType
     OP_LOG          = 9,
     OP_LN           = 10,
     OP_CTG          = 11,
+    OP_SQRT         = 12,
+    OP_ARCCOS       = 13,
+    OP_ARCSIN       = 14,
+    OP_ARCTG        = 15,
+    OP_ARCCTG       = 16,
+    OP_SH           = 17,
+    OP_CH           = 18,
 };
 
 struct Tree;

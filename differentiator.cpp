@@ -10,8 +10,8 @@
 
 const int STRSIZE = 30;
 const int CHARSTR = 2;
-const double PI = 3.1415926589;
-const double E = 2.7182818284;
+static bool CHANGE = true;
+const double EPSILON = 1e-10;
 
 int DifferentiatorMain(char* input)
 {
@@ -27,6 +27,9 @@ int DifferentiatorMain(char* input)
 
     difftree.anchor = newanchor;
     difftree.anchor->tree = &difftree;
+
+    CreateAncestor(difftree.anchor, NULL, &difftree);
+    SimplifyFunc(&difftree);
 
     TreeGraphDump(&difftree, 0, __LINE__, __func__, __FILE__);
 
@@ -62,6 +65,20 @@ OperType IsOper(char* str)
         return OP_LN;
     else if (strcmp(str, "ctg") == 0)
         return OP_CTG;
+    else if (strcmp(str, "sqrt") == 0)
+        return OP_SQRT;
+    else if (strcmp(str, "arcsin") == 0)
+        return OP_ARCSIN;
+    else if (strcmp(str, "arccos") == 0)
+        return OP_ARCCOS;
+    else if (strcmp(str, "arctg") == 0)
+        return OP_ARCTG;
+    else if (strcmp(str, "arcctg") == 0)
+        return OP_ARCCTG;
+    else if (strcmp(str, "sh") == 0)
+        return OP_SH;
+    else if (strcmp(str, "ch") == 0)
+        return OP_CH;
 
     return OP_UNKNOWN;
 }
@@ -70,7 +87,9 @@ bool IsOneArg(Node* node)
 {
     if (node->type == OP_TYPE)
     {
-        if (node->optype == OP_COS || node->optype == OP_SIN || node->optype == OP_TG || node->optype == OP_CTG || node->optype == OP_LN)
+        if (node->optype == OP_COS || node->optype == OP_SIN || node->optype == OP_TG || node->optype == OP_CTG ||
+            node->optype == OP_LN || node->optype == OP_SQRT || node->optype == OP_ARCSIN || node->optype == OP_ARCCOS
+            || node->optype == OP_ARCTG || node->optype == OP_ARCCTG || node->optype == OP_CH || node->optype == OP_SH)
             return true;
         else
             return false;
@@ -187,8 +206,25 @@ Node* NodeCopy(Node* node)
     return newnode;
 }
 
+Node* CreateNode(NodeType type, double val, OperType optype, char* varvalue, Node* leftchild, Node* rightchild)
+{
+    Node* newnode = (Node*) calloc(1, sizeof(Node));
+
+    newnode->optype = optype;
+    newnode->val = val;
+    newnode->type = type;
+    newnode->varvalue = varvalue;
+
+    newnode->leftchild = leftchild;
+    newnode->rightchild = rightchild;
+
+    return newnode;
+}
+
 Node* DiffNode(Node* node)
 {
+    DBG assert(node != NULL);
+
     switch (node->type)
     {
         case NUM_TYPE:
@@ -223,6 +259,20 @@ Node* DiffNode(Node* node)
                     return MUL(DIV(CREATENUM(1), POWER(COS(NULL, CR), CREATENUM(2))), DR);
                 case OP_CTG:
                     return MUL(MUL(CREATENUM(-1), DIV(CREATENUM(1), POWER(SIN(NULL, CR), CREATENUM(2)))), DR);
+                case OP_SQRT:
+                    return MUL(DIV(CREATENUM(1), MUL(CREATENUM(2), SQRT(NULL, CR))), DR);
+                case OP_ARCSIN:
+                    return MUL(DIV(CREATENUM(1), SQRT(NULL, SUB(CREATENUM(1), POWER(CR, CREATENUM(2))))), DR);
+                case OP_ARCCOS:
+                    return MUL(MUL(CREATENUM(-1), DIV(CREATENUM(1), SQRT(NULL, SUB(CREATENUM(1), POWER(CR, CREATENUM(2)))))), DR);
+                case OP_ARCTG:
+                    return MUL(DIV(CREATENUM(1), ADD(CREATENUM(1), POWER(CR, CREATENUM(2)))), DR);
+                case OP_ARCCTG:
+                    return MUL(MUL(CREATENUM(-1), DIV(CREATENUM(1), ADD(CREATENUM(1), POWER(CR, CREATENUM(2))))), DR);
+                case OP_SH:
+                    return MUL(CH(NULL, CR), DR);
+                case OP_CH:
+                    return MUL(SH(NULL, CR), DR);
                 case OP_UNKNOWN:
                     return node;
                 default:
@@ -239,6 +289,8 @@ Node* DiffNode(Node* node)
 
 Node* DiffPower(Node* node)
 {
+    DBG assert(node != NULL);
+
     char var[CHARSTR] = "x";
     Node* searchright = NULL;
     Node* searchleft = NULL;
@@ -262,6 +314,8 @@ Node* DiffPower(Node* node)
 
 Node* DiffLog(Node* node)
 {
+    DBG assert(node != NULL);
+
     char var[2] = "x";
     Node* searchleft = TreeDepthSearch(node->leftchild, var);
     Node* searchright = TreeDepthSearch(node->rightchild, var);
@@ -276,19 +330,299 @@ Node* DiffLog(Node* node)
         return CREATENUM(0);
 }
 
-Node* CreateNode(NodeType type, double val, OperType optype, char* varvalue, Node* leftchild, Node* rightchild)
+int CreateAncestor(Node* node, Node* ancestor, Tree* tree)
 {
-    Node* newnode = (Node*) calloc(1, sizeof(Node));
+    DBG assert (node != NULL);
+    DBG assert (node != NULL);
 
-    newnode->optype = optype;
-    newnode->val = val;
-    newnode->type = type;
-    newnode->varvalue = varvalue;
+    node->tree = tree;
 
-    newnode->leftchild = leftchild;
-    newnode->rightchild = rightchild;
+    if (node->leftchild)
+        CreateAncestor(node->leftchild, node, tree);
+    if (node->rightchild)
+        CreateAncestor(node->rightchild, node, tree);
 
-    return newnode;
+    node->ancestor = ancestor;
+
+    return NOERR;
+}
+
+int SimplifyFunc(Tree* tree)
+{
+    DBG assert(tree != NULL);
+
+    while (CHANGE)
+    {
+        SimplifyConstants(tree->anchor);
+
+        DeleteMeaninglessNodes(tree->anchor);
+    }
+
+    return NOERR;
+}
+
+int SimplifyConstants(Node* node)
+{
+    DBG assert(node != NULL);
+
+    CHANGE = false;
+
+    if (node->leftchild)
+        SimplifyConstants(node->leftchild);
+
+    if (node->rightchild)
+        SimplifyConstants(node->rightchild);
+
+    SimplifyConstantNode(node);
+
+    return NOERR;
+}
+
+int SimplifyConstantNode(Node* node)
+{
+    DBG assert(node != NULL);
+
+    if (node->type != OP_TYPE)
+        return NOERR;
+
+    if (!node->leftchild)
+        return NOERR;
+
+    if (node->leftchild->type != NUM_TYPE || node->rightchild->type != NUM_TYPE)
+        return NOERR;
+
+    if (node->optype == OP_SUB)
+    {
+        node->type = NUM_TYPE;
+        node->val = node->leftchild->val - node->rightchild->val;
+        node->varvalue = NULL;
+        node->optype = OP_UNKNOWN;
+        node->leftchild = NULL;
+        node->rightchild = NULL;
+        CHANGE = true;
+    }
+    if (node->optype == OP_MUL)
+    {
+        node->type = NUM_TYPE;
+        node->val = node->leftchild->val * node->rightchild->val;
+        node->varvalue = NULL;
+        node->optype = OP_UNKNOWN;
+        node->leftchild = NULL;
+        node->rightchild = NULL;
+        CHANGE = true;
+    }
+    if (node->optype == OP_DIV)
+    {
+        node->type = NUM_TYPE;
+        node->val = node->leftchild->val / node->rightchild->val;
+        node->varvalue = NULL;
+        node->optype = OP_UNKNOWN;
+        node->leftchild = NULL;
+        node->rightchild = NULL;
+        CHANGE = true;
+    }
+    if (node->optype == OP_ADD)
+    {
+        node->type = NUM_TYPE;
+        node->val = node->leftchild->val + node->rightchild->val;
+        node->varvalue = NULL;
+        node->optype = OP_UNKNOWN;
+        node->leftchild = NULL;
+        node->rightchild = NULL;
+        CHANGE = true;
+    }
+    if (node->optype == OP_POWER)
+    {
+        node->type = NUM_TYPE;
+        node->val = pow(node->leftchild->val, node->rightchild->val);
+        node->varvalue = NULL;
+        node->optype = OP_UNKNOWN;
+        node->leftchild = NULL;
+        node->rightchild = NULL;
+        CHANGE = true;
+    }
+    return NOERR;
+}
+
+int DeleteMeaninglessNodes(Node* node)
+{
+    DBG assert(node != NULL);
+
+    if (node->leftchild)
+        DeleteMeaninglessNodes(node->leftchild);
+    if (node->rightchild)
+        DeleteMeaninglessNodes(node->rightchild);
+
+    CheckNDeleteNode(node);
+
+    return NOERR;
+}
+
+int CheckNDeleteNode(Node* node)
+{
+    DBG assert (node != NULL);
+    printf("HERE\n");
+
+    if (node->type != OP_TYPE)
+        return NOERR;
+    if (!node->leftchild || !node->rightchild)
+        return NOERR;
+
+    printf("tree = %p\n", node->tree);
+    printf("optype = %d\n", node->optype);
+
+    if (node->rightchild->type == NUM_TYPE && (node->optype == OP_ADD || node->optype == OP_MUL))
+    {
+        Node* temp = node->rightchild;
+        node->rightchild = node->leftchild;
+        node->leftchild = temp;
+    }
+
+    if (IS_OP(OP_MUL) && IS_LVAL(1))
+    {
+        printf("MUL1");
+        if (node == node->tree->anchor)
+            DeleteAnchor(node);
+
+        else if (node == node->ancestor->leftchild)
+        {
+            node->ancestor->leftchild = node->rightchild;
+            node->rightchild->ancestor = node->ancestor;
+            free(node->leftchild);
+            free(node);
+        }
+        else if (node == node->ancestor->rightchild)
+        {
+            node->ancestor->rightchild = node->rightchild;
+            node->rightchild->ancestor = node->ancestor;
+            free(node->leftchild);
+            free(node);
+        }
+        CHANGE = true;
+    }
+
+    if (IS_OP(OP_MUL) && IS_LVAL(0))
+    {
+        printf("MUL2");
+        if (node == node->tree->anchor)
+        {
+            node->type = NUM_TYPE;
+            node->val = 0;
+            node->varvalue = NULL;
+            node->optype = OP_UNKNOWN;
+            node->leftchild = NULL;
+            node->rightchild = NULL;
+            node->ancestor = NULL;
+            node->tree->anchor = node;
+        }
+        else
+        {
+            node->type = NUM_TYPE;
+            node->val = 0;
+            node->varvalue = NULL;
+            node->optype = OP_UNKNOWN;
+            node->leftchild = NULL;
+            node->rightchild = NULL;
+        }
+        CHANGE = true;
+    }
+
+    if (IS_OP(OP_ADD) && IS_LVAL(0))
+    {
+        if (node == node->tree->anchor)
+            DeleteAnchor(node);
+
+        else if (node == node->ancestor->leftchild)
+        {
+            node->ancestor->leftchild = node->rightchild;
+            node->rightchild->ancestor = node->ancestor;
+            free(node->leftchild);
+            free(node);
+        }
+        else if (node == node->ancestor->rightchild)
+        {
+            node->ancestor->rightchild = node->rightchild;
+            node->rightchild->ancestor = node->ancestor;
+            free(node->leftchild);
+            free(node);
+        }
+        CHANGE = true;
+    }
+
+    if (IS_OP(OP_SUB) && IS_LVAL(0))
+    {
+        if (node == node->tree->anchor)
+            DeleteAnchor(node);
+
+        else if (node == node->ancestor->leftchild)
+        {
+            node->ancestor->leftchild = node->rightchild;
+            node->rightchild->ancestor = node->ancestor;
+            free(node->leftchild);
+            free(node);
+        }
+        else if (node == node->ancestor->rightchild)
+        {
+            node->ancestor->rightchild = node->rightchild;
+            node->rightchild->ancestor = node->ancestor;
+            free(node->leftchild);
+            free(node);
+        }
+        CHANGE = true;
+    }
+
+    if (IS_OP(OP_POWER) && IS_RVAL(0))
+    {
+        node->type = NUM_TYPE;
+        node->val = 1;
+        node->varvalue = NULL;
+        node->optype = OP_UNKNOWN;
+        node->leftchild = NULL;
+        node->rightchild = NULL;
+
+        if (node == node->tree->anchor)
+            node->ancestor = NULL;
+
+        CHANGE = true;
+    }
+
+    if (IS_OP(OP_POWER) && IS_RVAL(1))
+    {
+        printf("here");
+        if (node == node->tree->anchor)
+        {
+            node->tree->anchor = node->leftchild;
+            free(node->rightchild);
+            free(node);
+        }
+
+        else if (node == node->ancestor->leftchild)
+        {
+            node->ancestor->leftchild = node->leftchild;
+            node->leftchild->ancestor = node->ancestor;
+            free(node->rightchild);
+            free(node);
+        }
+        else if (node == node->ancestor->rightchild)
+        {
+            node->ancestor->rightchild = node->leftchild;
+            node->leftchild->ancestor = node->ancestor;
+            free(node->rightchild);
+            free(node);
+        }
+        CHANGE = true;
+    }
+
+    return NOERR;
+}
+
+int DeleteAnchor(Node* node)
+{
+    DBG assert(node != NULL);
+
+    node->tree->anchor = node->rightchild;
+    free(node);
+    free(node->leftchild);
 }
 
 int TeXPrint(Tree* orig, Tree* difftree, FILE* out)
@@ -327,7 +661,7 @@ int TeXNodePrint(Node* node, FILE* out)
 
 int TeXDataStartPrint(Node* node, FILE* out)
 {
-    if (node->tree && node->optype != OP_DIV)
+    if (node == node->tree->anchor && node->optype != OP_DIV)
         return NOERR;
 
     switch (node->type)
@@ -353,6 +687,20 @@ int TeXDataStartPrint(Node* node, FILE* out)
             else if (node->optype == OP_DIV)
                 fprintf(out, "\\frac{");
             else if (node->optype == OP_LN)
+                break;
+            else if (node->optype == OP_SQRT)
+                break;
+            else if (node->optype == OP_ARCSIN)
+                break;
+            else if (node->optype == OP_ARCCOS)
+                break;
+            else if (node->optype == OP_ARCTG)
+                break;
+            else if (node->optype == OP_ARCCTG)
+                break;
+            else if (node->optype == OP_SH)
+                break;
+            else if (node->optype == OP_CH)
                 break;
             else
                 fprintf(out, "(");
@@ -393,25 +741,46 @@ int TeXDataPrint(Node* node, FILE* out)
                     fprintf(out, "}{");
                     break;
                 case OP_COS:
-                    fprintf(out, "\\cos(");
+                    fprintf(out, "\\cos{");
                     break;
                 case OP_SIN:
-                    fprintf(out, "\\sin(");
+                    fprintf(out, "\\sin{");
                     break;
                 case OP_POWER:
                     fprintf(out, "^{");
                     break;
                 case OP_LN:
-                    fprintf(out, "\\ln(");
+                    fprintf(out, "\\ln{");
                     break;
                 case OP_LOG:
-                    fprintf(out, "\\log(");
+                    fprintf(out, "\\log{");
                     break;
                 case OP_TG:
-                    fprintf(out, "\\tg(");
+                    fprintf(out, "\\tg{");
                     break;
                 case OP_CTG:
-                    fprintf(out, "\\ctg(");
+                    fprintf(out, "\\ctg{");
+                    break;
+                case OP_SQRT:
+                    fprintf(out, "\\sqrt{");
+                    break;
+                case OP_ARCSIN:
+                    fprintf(out, "\\arcsin{");
+                    break;
+                case OP_ARCCOS:
+                    fprintf(out, "\\arccos{");
+                    break;
+                case OP_ARCTG:
+                    fprintf(out, "\\arctg{");
+                    break;
+                case OP_ARCCTG:
+                    fprintf(out, "\\arcctg{");
+                    break;
+                case OP_SH:
+                    fprintf(out, "\\sinh{");
+                    break;
+                case OP_CH:
+                    fprintf(out, "\\cosh{");
                     break;
                 case OP_UNKNOWN:
                     break;
@@ -430,7 +799,7 @@ int TeXDataPrint(Node* node, FILE* out)
 
 int TeXDataEndPrint(Node* node, FILE* out)
 {
-    if (node->tree && node->optype != OP_DIV)
+    if (node == node->tree->anchor && !IsOneArg(node))
         return NOERR;
 
     switch (node->type)
@@ -442,16 +811,34 @@ int TeXDataEndPrint(Node* node, FILE* out)
         case OP_TYPE:
         {
             if (node->optype == OP_COS)
-                fprintf(out, ")");
+                fprintf(out, "}");
             else if (node->optype == OP_SIN)
-                fprintf(out, ")");
+                fprintf(out, "}");
             else if (node->optype == OP_POWER)
                 fprintf(out, "}");
             else if (node->optype == OP_TG)
-                fprintf(out, ")");
+                fprintf(out, "}");
+            else if (node->optype == OP_CTG)
+                fprintf(out, "}");
             else if (node->optype == OP_LN)
-                fprintf(out, ")");
+                fprintf(out, "}");
             else if (node->optype == OP_DIV)
+                fprintf(out, "}");
+            else if (node->optype == OP_SQRT)
+                fprintf(out, "}");
+            else if (node->optype == OP_ARCSIN)
+                fprintf(out, "}");
+            else if (node->optype == OP_ARCCOS)
+                fprintf(out, "}");
+            else if (node->optype == OP_ARCTG)
+                fprintf(out, "}");
+            else if (node->optype == OP_ARCCTG)
+                fprintf(out, "}");
+            else if (node->optype == OP_SH)
+                fprintf(out, "}");
+            else if (node->optype == OP_CH)
+                fprintf(out, "}");
+            else if (node->optype == OP_LOG)
                 fprintf(out, "}");
             else
                 fprintf(out, ")");
@@ -503,48 +890,48 @@ int PrepareTeXFile(FILE* out)
                     "\\begin{titlepage}                                                          \n"
                     "	\\begin{center}                                                         \n"
                     "		{                                                                   \n"
-                    "        \\large МОСКОВСКИЙ ФИЗИКО-ТЕХНИЧЕСКИЙ ИНСТИТУТ}                     \n"
+                    "        \\large пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ-пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ}                     \n"
                     "	\\end{center}                                                           \n"
                     "	\\begin{center}                                                         \n"
-                    "		{\\large Физтех-школа радиотехники и компьютерных технологий}       \n"
+                    "		{\\large пїЅпїЅпїЅпїЅпїЅпїЅ-пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ}       \n"
                     "	\\end{center}                                                           \n"
                     "                                                                            \n"
                     "                                                                            \n"
                     "	\\vspace{4.5cm}                                                         \n"
                     "	{\\huge                                                                 \n"
                     "		\\begin{center}                                                     \n"
-                    "			{\\bf Дифференцирование функции по заветам Механикус}\\         \n"
+                    "			{\\bf пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ}\\         \n"
                     "		\\end{center}                                                       \n"
                     "	}                                                                       \n"
                     "	\\vspace{2cm}                                                           \n"
                     "	\\begin{flushright}                                                     \n"
-                    "		{\\LARGE Автор:\\\\ Магос Техникус Александус Пластиниус \\\\       \n"
+                    "		{\\LARGE пїЅпїЅпїЅпїЅпїЅ:\\\\ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ \\\\       \n"
                     "			\\vspace{0.2cm}}                                                \n"
                     "	\\end{flushright}                                                       \n"
                     "	\\vspace{8cm}                                                           \n"
                     "	\\begin{center}                                                         \n"
-                    "		Долгопрудный 2022                                                   \n"
+                    "		пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ 2022                                                   \n"
                     "	\\end{center}                                                           \n"
                     "\\end{titlepage}                                                            \n"
                     "\n");
 
-    fprintf(out, "\\section{Введение}\n"
-            "Второе тысячелетие.\n\n"
-            "Уже более трех веков Матан недвижим на Золотом Троне Наук.\n\n"
-            "Он — Повелитель Человечества и властелин мириадов людей, завоеванных могуществом Его неисчислимых функций.\n\n"
-            "Он — полутруп, неуловимую искру жизни в котором поддерживают древние знания, и ради этого ежедневно приносится в жертву тысяча душ. И поэтому Владыка Человечества никогда не умирает по-настоящему.\n\n"
-            "Даже в своем нынешнем состоянии Матан продолжает миссию, для которой появился на свет.\n\n"
-            "Могучие боевые математики пересекают кишащий демонами обычный мир, и путь этот освещен Физтехом, зримым проявлением духовной воли Матана.\n\n"
-            "Огромные армии сражаются во имя Его на бесчисленных полях тетрадей.\n\n"
-            "Величайшие среди его солдат — преподы матана, математические десантники, генетически улучшенные супервоины.\n\n"
-            "У них много товарищей по оружию: Аспирантская Гвардия и бесчисленные Силы Студенческой Обороны, вечно бдительный Деканат и техножрецы Адептус Информатикус.\n\n"
-            "Но, несмотря на все старания, их сил едва хватает, чтобы сдерживать извечную угрозу со стороны физиков, химиков и биологов.\n\n"
-            "Быть физтехом в такое время — значит быть одним из тысяч.\n\n"
-            "Это значит жить при самом жестоком и кровавом режиме, который только можно представить.\n\n"
-            "Забудьте о достижениях общесоса и проги, ибо многое забыто и никогда не будет открыто заново.\n\n"
-            "Забудьте о перспективах, обещанных прогрессом, о взаимопонимании, ибо во мраке МФТИ есть только война.\n\n"
-            "Нет мира среди аудиторий — лишь вечная бойня и кровопролитие, да смех жаждущих фопфов.\n\n");
-    fprintf(out,    "\\section{Ее величество функция}\n");
+    fprintf(out, "\\section{пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ}\n"
+            "пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
+            "пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ.\n\n"
+            "пїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
+            "пїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ, пїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ. пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ-пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
+            "пїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ.\n\n"
+            "пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ, пїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
+            "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
+            "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
+            "пїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ: пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
+            "пїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
+            "пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ.\n\n"
+            "пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
+            "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
+            "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ.\n\n"
+            "пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ.\n\n");
+    fprintf(out,    "\\section{пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ}\n");
     return NOERR;
 }
 
@@ -626,6 +1013,21 @@ int NodePrint(Node* node)
         NodePrint(node->rightchild);
 
     printf(")");
+
+    return NOERR;
+}
+
+int compare(const double a, const double b)
+{
+    DBG assert(isfinite(a));
+    DBG assert(isfinite(b));
+
+    if (fabs(a-b) < EPSILON)
+        return 0;
+    if ((a-b) > EPSILON)
+        return 1;
+    if ((a-b) < EPSILON)
+        return -1;
 
     return NOERR;
 }

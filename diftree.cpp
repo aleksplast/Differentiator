@@ -268,28 +268,42 @@ int OpTypePrint(FILE* fp, OperType opertype)
 {
     if (opertype == OP_UNKNOWN)
         fprintf(fp, "%s", "UNKNOWN");
-    if (opertype == OP_ADD)
+    else if (opertype == OP_ADD)
         fprintf(fp, "%s", "ADD");
-    if (opertype == OP_MUL)
+    else if (opertype == OP_MUL)
         fprintf(fp, "%s", "MUL");
-    if (opertype == OP_SUB)
+    else if (opertype == OP_SUB)
         fprintf(fp, "%s", "SUB");
-    if (opertype == OP_DIV)
+    else if (opertype == OP_DIV)
         fprintf(fp, "%s", "DIV");
-    if (opertype == OP_SIN)
+    else if (opertype == OP_SIN)
         fprintf(fp, "%s", "SIN");
-    if (opertype == OP_COS)
+    else if (opertype == OP_COS)
         fprintf(fp, "%s", "COS");
-    if (opertype == OP_POWER)
+    else if (opertype == OP_POWER)
         fprintf(fp, "%s", "^");
-    if (opertype == OP_LOG)
+    else if (opertype == OP_LOG)
         fprintf(fp, "%s", "LOG");
-    if (opertype == OP_LN)
+    else if (opertype == OP_LN)
         fprintf(fp, "%s", "LN");
-    if (opertype == OP_TG)
+    else if (opertype == OP_TG)
         fprintf(fp, "%s", "TG");
-    if (opertype == OP_CTG)
+    else if (opertype == OP_CTG)
         fprintf(fp, "%s", "CTG");
+    else if (opertype == OP_SQRT)
+        fprintf(fp, "%s", "SQRT");
+    else if (opertype == OP_ARCSIN)
+        fprintf(fp, "%s", "ARCSIN");
+    else if (opertype == OP_ARCCOS)
+        fprintf(fp, "%s", "ARCCOS");
+    else if (opertype == OP_ARCTG)
+        fprintf(fp, "%s", "ARCTG");
+    else if (opertype == OP_ARCCTG)
+        fprintf(fp, "%s", "ARCCTG");
+    else if (opertype == OP_SH)
+        fprintf(fp, "%s", "SH");
+    else if (opertype == OP_CH)
+        fprintf(fp, "%s", "CH");
 
     return NOERR;
 }
