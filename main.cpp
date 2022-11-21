@@ -4,9 +4,12 @@
 
 int main()
 {
-    char input[100] = "input.txt";
+    char input[100] = "";
+    gets(input);
 
-    DifferentiatorMain(input);
+//    DifferentiatorMain(input);
+
+    printf("%d", GetG(input));
 
     return 0;
 }

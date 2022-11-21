@@ -1,5 +1,5 @@
-#define DL DiffNode(node->leftchild)
-#define DR DiffNode(node->rightchild)
+#define DL DiffNode(node->leftchild, phrases, out)
+#define DR DiffNode(node->rightchild, phrases, out)
 #define CL NodeCopy(node->leftchild)
 #define CR NodeCopy(node->rightchild)
 #define SUB(L, R) CreateNode(OP_TYPE, 0, OP_SUB, NULL, L, R)

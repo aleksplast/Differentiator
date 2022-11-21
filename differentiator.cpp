@@ -4,18 +4,32 @@
 #include <ctype.h>
 #include <math.h>
 #include <assert.h>
+#include <locale.h>
 
 #include "TXLib.h"
 #include "differentiator.h"
+
+//TO DO LIST
+//КАСАТЕЛЬНАЯ
+//ГРАФИК
+//ПОЛНАЯ ПОГРЕШНОСТЬ
 
 const int STRSIZE = 30;
 const int CHARSTR = 2;
 static bool CHANGE = true;
 const double EPSILON = 1e-10;
+static bool PrintTeX = true;
 
 int DifferentiatorMain(char* input)
 {
     Tree datatree = DataParser(input);
+
+    setlocale(LC_ALL,"Rus");
+
+    char diffphrases[STRSIZE] = "DiffBundles.txt";
+
+    Phrases diffbundles = {};
+    GetPhrases(&diffbundles, diffphrases);
 
     TreeGraphDump(&datatree, 0, __LINE__, __func__, __FILE__);
 
@@ -24,7 +38,23 @@ int DifferentiatorMain(char* input)
     FILE* out = fopen("out.txt", "w");
 
     PrepareTeXFile(out);
-    MaclaurinSeries(&datatree, out);
+    TeXPrint(datatree.anchor, out);
+
+    Tree difftree = DiffFuncOnce(&datatree, &diffbundles, out);
+
+    MaclaurinSeries(&datatree, &difftree, &diffbundles, out);
+
+    return NOERR;
+}
+
+int GetPhrases(Phrases* phrases, char* input)
+{
+    const char* mode = "r";
+    const char end = '\n';
+
+    TextReader(input, phrases, mode);
+
+    LinesSeparator(phrases, end);
 
     return NOERR;
 }
@@ -209,58 +239,80 @@ Node* CreateNode(NodeType type, double val, OperType optype, char* varvalue, Nod
     return newnode;
 }
 
-Node* DiffNode(Node* node)
+Node* DiffNode(Node* node, Phrases* phrases, FILE* out)
 {
     DBG assert(node != NULL);
+
+    Node* newnode = node;
 
     switch (node->type)
     {
         case NUM_TYPE:
-            return CREATENUM(0);
+            newnode = CREATENUM(0);
+            break;
         case VAR_TYPE:
             if (*(node->varvalue) == 'x')
-                return CREATENUM(1);
+                newnode = CREATENUM(1);
             else
-                return CREATENUM(0);
+                newnode = CREATENUM(0);
+            break;
         case OP_TYPE:
             switch (node->optype)
             {
                 case OP_ADD:
-                    return ADD(DL, DR);
+                    newnode = ADD(DL, DR);
+                    break;
                 case OP_SUB:
-                    return SUB(DL, DR);
+                    newnode = SUB(DL, DR);
+                    break;
                 case OP_MUL:
-                    return ADD(MUL(DL, CR), MUL(CL, DR));
+                    newnode = ADD(MUL(DL, CR), MUL(CL, DR));
+                    break;
                 case OP_DIV:
-                    return DIV(SUB(MUL(DL, CR), MUL(CL, DR)), POWER(CR, CREATENUM(2)));
+                    newnode = DIV(SUB(MUL(DL, CR), MUL(CL, DR)), POWER(CR, CREATENUM(2)));
+                    break;
                 case OP_SIN:
-                    return MUL(COS(NULL, CR), DR);
+                    newnode = MUL(COS(NULL, CR), DR);
+                    break;
                 case OP_COS:
-                    return MUL(MUL(SIN(NULL, CR), CREATENUM(-1)), DR);
+                    newnode = MUL(MUL(SIN(NULL, CR), CREATENUM(-1)), DR);
+                    break;
                 case OP_POWER:
-                    return DiffPower(node);
+                    newnode = DiffPower(node, phrases, out);
+                    break;
                 case OP_LOG:
-                    return DiffLog(node);
+                    newnode = DiffLog(node, phrases, out);
+                    break;
                 case OP_LN:
-                    return MUL(DIV(CREATENUM(1), CR), DR);
+                    newnode = MUL(DIV(CREATENUM(1), CR), DR);
+                    break;
                 case OP_TG:
-                    return MUL(DIV(CREATENUM(1), POWER(COS(NULL, CR), CREATENUM(2))), DR);
+                    newnode = MUL(DIV(CREATENUM(1), POWER(COS(NULL, CR), CREATENUM(2))), DR);
+                    break;
                 case OP_CTG:
-                    return MUL(MUL(CREATENUM(-1), DIV(CREATENUM(1), POWER(SIN(NULL, CR), CREATENUM(2)))), DR);
+                    newnode = MUL(MUL(CREATENUM(-1), DIV(CREATENUM(1), POWER(SIN(NULL, CR), CREATENUM(2)))), DR);
+                    break;
                 case OP_SQRT:
-                    return MUL(DIV(CREATENUM(1), MUL(CREATENUM(2), SQRT(NULL, CR))), DR);
+                    newnode = MUL(DIV(CREATENUM(1), MUL(CREATENUM(2), SQRT(NULL, CR))), DR);
+                    break;
                 case OP_ARCSIN:
-                    return MUL(DIV(CREATENUM(1), SQRT(NULL, SUB(CREATENUM(1), POWER(CR, CREATENUM(2))))), DR);
+                    newnode = MUL(DIV(CREATENUM(1), SQRT(NULL, SUB(CREATENUM(1), POWER(CR, CREATENUM(2))))), DR);
+                    break;
                 case OP_ARCCOS:
-                    return MUL(MUL(CREATENUM(-1), DIV(CREATENUM(1), SQRT(NULL, SUB(CREATENUM(1), POWER(CR, CREATENUM(2)))))), DR);
+                    newnode = MUL(MUL(CREATENUM(-1), DIV(CREATENUM(1), SQRT(NULL, SUB(CREATENUM(1), POWER(CR, CREATENUM(2)))))), DR);
+                    break;
                 case OP_ARCTG:
-                    return MUL(DIV(CREATENUM(1), ADD(CREATENUM(1), POWER(CR, CREATENUM(2)))), DR);
+                    newnode = MUL(DIV(CREATENUM(1), ADD(CREATENUM(1), POWER(CR, CREATENUM(2)))), DR);
+                    break;
                 case OP_ARCCTG:
-                    return MUL(MUL(CREATENUM(-1), DIV(CREATENUM(1), ADD(CREATENUM(1), POWER(CR, CREATENUM(2))))), DR);
+                    newnode = MUL(MUL(CREATENUM(-1), DIV(CREATENUM(1), ADD(CREATENUM(1), POWER(CR, CREATENUM(2))))), DR);
+                    break;
                 case OP_SH:
-                    return MUL(CH(NULL, CR), DR);
+                    newnode = MUL(CH(NULL, CR), DR);
+                    break;
                 case OP_CH:
-                    return MUL(SH(NULL, CR), DR);
+                    newnode = MUL(SH(NULL, CR), DR);
+                    break;
                 case OP_UNKNOWN:
                     return node;
                 default:
@@ -272,10 +324,24 @@ Node* DiffNode(Node* node)
             break;
     }
 
-    return node;
+    if (PrintTeX)
+    {
+        fprintf(out, "$$");
+        fprintf(out, "%s", phrases->Strings[rand()%(phrases->nlines)].ptr);
+        fprintf(out, "(");
+        TeXNodePrint(node, out);
+        fprintf(out, ")'");
+        fprintf(out, " = ");
+        TeXNodePrint(newnode, out);
+        fprintf(out, "$$");
+        fprintf(out, "\n\n");
+        fprintf(out, "\n\n");
+    }
+
+    return newnode;
 }
 
-Node* DiffPower(Node* node)
+Node* DiffPower(Node* node, Phrases* phrases, FILE* out)
 {
     DBG assert(node != NULL);
 
@@ -289,7 +355,7 @@ Node* DiffPower(Node* node)
         searchright = TreeDepthSearch(node->rightchild, var);
 
     if (searchleft && searchright)
-        return MUL(POWER(CREATEVAR(e), MUL(LN(NULL, CL), CR)), DiffNode(MUL(LN(NULL, CL), CR)));
+        return MUL(POWER(CREATEVAR(e), MUL(LN(NULL, CL), CR)), DiffNode(MUL(LN(NULL, CL), CR), phrases, out));
     else if (searchleft)
         return MUL(MUL(CR, POWER(CL, SUB(CR, CREATENUM(1)))), DL);
     else if (searchright)
@@ -300,7 +366,7 @@ Node* DiffPower(Node* node)
     return node;
 }
 
-Node* DiffLog(Node* node)
+Node* DiffLog(Node* node, Phrases* phrases, FILE* out)
 {
     DBG assert(node != NULL);
 
@@ -309,9 +375,9 @@ Node* DiffLog(Node* node)
     Node* searchright = TreeDepthSearch(node->rightchild, var);
 
     if (searchleft && searchright)
-        return DiffNode(DIV(LN(NULL, CR), LN(NULL, CL)));
+        return DiffNode(DIV(LN(NULL, CR), LN(NULL, CL)), phrases, out);
     else if (searchleft)
-        return DiffNode(DIV(LN(NULL, CR), LN(NULL, CL)));
+        return DiffNode(DIV(LN(NULL, CR), LN(NULL, CL)), phrases, out);
     else if (searchright)
         return MUL(DIV(CREATENUM(1), MUL(LN(NULL, CL), CR)), DR);
     else
@@ -684,22 +750,14 @@ double CalculateNode(Node* node, double x)
     }
 }
 
-int MaclaurinSeries(Tree* tree, FILE* out)
+Tree DiffFuncOnce(Tree* datatree, Phrases* phrases, FILE* out)
 {
-    int order = 0;
-    printf("Enter the order of series\n");
-    scanf("%d", &order);
-
     Tree difftree = {};
     char difftreelog[STRSIZE] = "difftreelog.htm";
     TreeCtor(&difftree, UNKNOWN_TYPE, 0, OP_UNKNOWN, NULL, difftreelog);
+    fprintf(out, "Давайте же возьмем ее производную во имя матана\n\n");
 
-    char serieslog[STRSIZE] = "serieslog.htm";
-
-    Tree seriestree = {};
-    TreeCtor(&seriestree, NUM_TYPE, CalculateNode(tree->anchor, 0), OP_UNKNOWN, NULL, serieslog);
-
-    Node* newanchor = DiffNode(tree->anchor);
+    Node* newanchor = DiffNode(datatree->anchor, phrases, out);
 
     difftree.anchor = newanchor;
     difftree.anchor->tree = &difftree;
@@ -707,31 +765,47 @@ int MaclaurinSeries(Tree* tree, FILE* out)
     CreateAncestor(difftree.anchor, NULL, &difftree);
     SimplifyFunc(&difftree);
 
-    Node* seriesanch = ADD(NULL, MUL(CREATENUM(CalculateNode(difftree.anchor, 0)), CREATEVAR(x)));
+    TreeGraphDump(&difftree, 0, __LINE__, __func__, __FILE__);
+
+    return difftree;
+}
+
+int MaclaurinSeries(Tree* datatree, Tree* difftree, Phrases* phrases, FILE* out)
+{
+    int order = 0;
+    PrintTeX = false;
+    printf("Enter the order of series\n");
+    scanf("%d", &order);
+
+    char serieslog[STRSIZE] = "serieslog.htm";
+
+    Tree seriestree = {};
+    TreeCtor(&seriestree, NUM_TYPE, CalculateNode(datatree->anchor, 0), OP_UNKNOWN, NULL, serieslog);
+
+    Node* seriesanch = ADD(NULL, MUL(CREATENUM(CalculateNode(difftree->anchor, 0)), CREATEVAR(x)));
     seriesanch->leftchild = seriestree.anchor;
     seriestree.anchor = seriesanch;
 
-    TreeGraphDump(&difftree, 0, __LINE__, __func__, __FILE__);
-
     for (int counter = 2; counter <= order; counter++)
     {
-        newanchor = DiffNode(difftree.anchor);
+        Node* newanchor = DiffNode(difftree->anchor, phrases, out);
 
-        difftree.anchor = newanchor;
-        difftree.anchor->tree = &difftree;
+        difftree->anchor = newanchor;
+        difftree->anchor->tree = difftree;
 
-        CreateAncestor(difftree.anchor, NULL, &difftree);
-        SimplifyFunc(&difftree);
+        CreateAncestor(difftree->anchor, NULL, difftree);
+        SimplifyFunc(difftree);
 
-        TreeGraphDump(&difftree, 0, __LINE__, __func__, __FILE__);
+        TreeGraphDump(difftree, 0, __LINE__, __func__, __FILE__);
 
-        seriesanch = ADD(NULL, MUL(DIV(CREATENUM(CalculateNode(difftree.anchor, 0)), CREATENUM(Factorial(counter))), POWER(CREATEVAR(x), CREATENUM(counter))));
+        seriesanch = ADD(NULL, MUL(DIV(CREATENUM(CalculateNode(difftree->anchor, 0)), CREATENUM(Factorial(counter))), POWER(CREATEVAR(x), CREATENUM(counter))));
         seriesanch->leftchild = seriestree.anchor;
         seriestree.anchor = seriesanch;
         seriestree.anchor->tree = &seriestree;
         TreeGraphDump(&seriestree, 0, __LINE__, __func__, __FILE__);
 
     }
+
 
     CreateAncestor(seriestree.anchor, NULL, &seriestree);
     SimplifyFunc(&seriestree);
@@ -756,23 +830,20 @@ int Factorial(int n)
     return fact;
 }
 
-int TeXPrint(Tree* orig, Tree* difftree, FILE* out)
+int TeXPrint(Node* node, FILE* out)
 {
-    PrepareTeXFile(out);
+    printf("node = %p\n", node);
 
     fprintf(out, "$$");
-    TeXNodePrint(orig->anchor, out);
-    fprintf(out, "$$\n");
-
-    fprintf(out, "$$");
-    TeXNodePrint(difftree->anchor, out);
-    fprintf(out, "$$");
+    TeXNodePrint(node, out);
+    fprintf(out, "$$\n\n");
 
     return NOERR;
 }
 
 int TeXNodePrint(Node* node, FILE* out)
 {
+
     TeXDataStartPrint(node, out);
 //    if (node->optype != OP_SIN && node->optype != OP_COS && node->optype != OP_UNKNOWN && !node->tree)
 //        fprintf(out, "(");
@@ -792,7 +863,7 @@ int TeXNodePrint(Node* node, FILE* out)
 
 int TeXDataStartPrint(Node* node, FILE* out)
 {
-    if (node == node->tree->anchor && node->optype != OP_DIV)
+    if (node->tree && node == node->tree->anchor && node->optype != OP_DIV)
         return NOERR;
 
     switch (node->type)
@@ -930,7 +1001,7 @@ int TeXDataPrint(Node* node, FILE* out)
 
 int TeXDataEndPrint(Node* node, FILE* out)
 {
-    if (node == node->tree->anchor && !IsOneArg(node))
+    if (node->tree && node == node->tree->anchor && !IsOneArg(node))
         return NOERR;
 
     switch (node->type)
@@ -1021,48 +1092,49 @@ int PrepareTeXFile(FILE* out)
                     "\\begin{titlepage}                                                          \n"
                     "	\\begin{center}                                                         \n"
                     "		{                                                                   \n"
-                    "        \\large пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ-пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ}                     \n"
+                    "        \\large МОСКОВСКИЙ ФИЗИКО-ТЕХНИЧЕСКИЙ ИНСТИТУТ}                     \n"
                     "	\\end{center}                                                           \n"
                     "	\\begin{center}                                                         \n"
-                    "		{\\large пїЅпїЅпїЅпїЅпїЅпїЅ-пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ}       \n"
+                    "		{\\large Физтех-школа радиотехники и компьютерных технологий}       \n"
                     "	\\end{center}                                                           \n"
                     "                                                                            \n"
                     "                                                                            \n"
                     "	\\vspace{4.5cm}                                                         \n"
                     "	{\\huge                                                                 \n"
                     "		\\begin{center}                                                     \n"
-                    "			{\\bf пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ}\\         \n"
+                    "			{\\bf Дифференцирование функции по заветам Механикус}\\         \n"
                     "		\\end{center}                                                       \n"
                     "	}                                                                       \n"
                     "	\\vspace{2cm}                                                           \n"
                     "	\\begin{flushright}                                                     \n"
-                    "		{\\LARGE пїЅпїЅпїЅпїЅпїЅ:\\\\ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ \\\\       \n"
+                    "		{\\LARGE АВТОР:\\\\ Магос Техникус Александус Пластиниус \\\\       \n"
                     "			\\vspace{0.2cm}}                                                \n"
                     "	\\end{flushright}                                                       \n"
                     "	\\vspace{8cm}                                                           \n"
                     "	\\begin{center}                                                         \n"
-                    "		пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ 2022                                                   \n"
+                    "		Долгопрудный 2022                                                   \n"
                     "	\\end{center}                                                           \n"
                     "\\end{titlepage}                                                            \n"
                     "\n");
 
-    fprintf(out, "\\section{пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ}\n"
-            "пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ, пїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ. пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ-пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ, пїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ: пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ.\n\n");
-    fprintf(out,    "\\section{пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ}\n");
+    fprintf(out, "\\section{Введение}\n"
+            "Второе тысячелетие.\n\n"
+            "Уже более трех веков Матан недвижим на Золотом Троне Наук.\n\n"
+            "Он — Повелитель Человечества и властелин мириадов людей, завоеванных могуществом Его неисчислимых функций.\n\n"
+            "Он — полутруп, неуловимую искру жизни в котором поддерживают древние знания, и ради этого ежедневно приносится в жертву тысяча душ. И поэтому Владыка Человечества никогда не умирает по-настоящему.\n\n"
+            "Даже в своем нынешнем состоянии Матан продолжает миссию, для которой появился на свет.\n\n"
+            "Могучие боевые математики пересекают кишащий демонами обычный мир, и путь этот освещен Физтехом, зримым проявлением духовной воли Матана.\n\n"
+            "Огромные армии сражаются во имя Его на бесчисленных полях тетрадей.\n\n"
+            "Величайшие среди его солдат — преподы матана, математические десантники, генетически улучшенные супервоины.\n\n"
+            "У них много товарищей по оружию: Аспирантская Гвардия и бесчисленные Силы Студенческой Обороны, вечно бдительный Деканат и техножрецы Адептус Информатикус.\n\n"
+            "Но, несмотря на все старания, их сил едва хватает, чтобы сдерживать извечную угрозу со стороны физиков, химиков и биологов.\n\n"
+            "Быть физтехом в такое время — значит быть одним из тысяч.\n\n"
+            "Это значит жить при самом жестоком и кровавом режиме, который только можно представить.\n\n"
+            "Забудьте о достижениях общесоса и проги, ибо многое забыто и никогда не будет открыто заново.\n\n"
+            "Забудьте о перспективах, обещанных прогрессом, о взаимопонимании, ибо во мраке МФТИ есть только война.\n\n"
+            "Нет мира среди аудиторий — лишь вечная бойня и кровопролитие, да смех жаждущих фопфов.\n\n");
+    fprintf(out,    "\\section{Ее величество функция}\n\n");
+    fprintf(out, "Функция количества еретиков от количества пар матана в неделю представляется следующим образом: \n\n");
     return NOERR;
 }
 
