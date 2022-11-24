@@ -196,17 +196,20 @@ Node* AddLeftChild(Tree* tree, Node* ancestor)
     return ancestor->leftchild;
 }
 
-int NodeDetor(Tree* tree, Node* node)
+int NodeDetor(Node* node)
 {
     DBG assert (node != NULL);
 
     if (node->leftchild)
-        NodeDetor(tree, node->leftchild);
+        NodeDetor(node->leftchild);
 
     else if (node->rightchild)
-        NodeDetor(tree, node->leftchild);
+        NodeDetor(node->leftchild);
 
-    tree->size--;
+    node->leftchild = NULL;
+    node->rightchild = NULL;
+    node->ancestor = NULL;
+    node->tree->size--;
 
     free(node);
 
@@ -241,7 +244,7 @@ int TreeDetor(Tree* tree)
 
     TREECHECK
 
-    NodeDetor(tree, tree->anchor);
+    NodeDetor(tree->anchor);
 
     tree->size = -1;
     tree->graphlog = NULL;

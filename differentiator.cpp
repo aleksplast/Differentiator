@@ -10,15 +10,17 @@
 #include "differentiator.h"
 
 //TO DO LIST
-//ÊÀÑÀÒÅËÜÍÀß
-//ÃÐÀÔÈÊ
-//ÏÎËÍÀß ÏÎÃÐÅØÍÎÑÒÜ
+//Full inaccuracy
 
+char Econst[2] = "e";
+char Xconst[2] = "x";
+char Aconst[2] = "A";
 const int STRSIZE = 30;
 const int CHARSTR = 2;
 static bool CHANGE = true;
 const double EPSILON = 1e-10;
 static bool PrintTeX = true;
+const int RECOMENDSIZE = 50;
 
 int DifferentiatorMain(char* input)
 {
@@ -27,9 +29,17 @@ int DifferentiatorMain(char* input)
     setlocale(LC_ALL,"Rus");
 
     char diffphrases[STRSIZE] = "DiffBundles.txt";
+    char simpphrases[STRSIZE] = "SimplifyBundles.txt";
+
+    double x = 0;
+    printf("Enter x\n");
+    scanf("%lg", &x);
 
     Phrases diffbundles = {};
     GetPhrases(&diffbundles, diffphrases);
+
+    Phrases simpbundles = {};
+    GetPhrases(&simpbundles, simpphrases);
 
     TreeGraphDump(&datatree, 0, __LINE__, __func__, __FILE__);
 
@@ -38,11 +48,18 @@ int DifferentiatorMain(char* input)
     FILE* out = fopen("out.txt", "w");
 
     PrepareTeXFile(out);
-    TeXPrint(datatree.anchor, out);
+    TeXPrint(datatree.anchor, Aconst, out);
 
     Tree difftree = DiffFuncOnce(&datatree, &diffbundles, out);
 
+    TangentEquation(&datatree, &difftree, x, out);
+
+    CreateGraphic(&datatree, -8, 8, out);
+
     MaclaurinSeries(&datatree, &difftree, &diffbundles, out);
+
+    TreeDetor(&datatree);
+    TreeDetor(&difftree);
 
     return NOERR;
 }
@@ -125,7 +142,7 @@ Tree DataParser(char* inputdata)
     long size = FileSize(data);
     char* input = (char*) calloc(size, sizeof(char));
 
-    fread(input, 1, size, data);
+    fread(input, sizeof(char), size, data);
 
     char* log = (char*) calloc(STRSIZE, sizeof(char));
     log = "graphlog.htm";
@@ -224,7 +241,7 @@ Node* NodeCopy(Node* node)
     return newnode;
 }
 
-Node* CreateNode(NodeType type, double val, OperType optype, char* varvalue, Node* leftchild, Node* rightchild)
+Node* CreateNode(NodeType type, double val, OperType optype, char* varvalue, Tree* tree, Node* ancestor, Node* leftchild, Node* rightchild)
 {
     Node* newnode = (Node*) calloc(1, sizeof(Node));
 
@@ -232,6 +249,8 @@ Node* CreateNode(NodeType type, double val, OperType optype, char* varvalue, Nod
     newnode->val = val;
     newnode->type = type;
     newnode->varvalue = varvalue;
+    newnode->tree = tree;
+    newnode->ancestor = ancestor;
 
     newnode->leftchild = leftchild;
     newnode->rightchild = rightchild;
@@ -326,15 +345,13 @@ Node* DiffNode(Node* node, Phrases* phrases, FILE* out)
 
     if (PrintTeX)
     {
-        fprintf(out, "$$");
-        fprintf(out, "%s", phrases->Strings[rand()%(phrases->nlines)].ptr);
+        fprintf(out, "%s\n\n", phrases->Strings[rand()%(phrases->nlines - 2)].ptr);
+        fprintf(out, "$");
         fprintf(out, "(");
-        TeXNodePrint(node, out);
+        TeXPrint(node, Aconst, out);
         fprintf(out, ")'");
-        fprintf(out, " = ");
-        TeXNodePrint(newnode, out);
-        fprintf(out, "$$");
-        fprintf(out, "\n\n");
+        fprintf(out, " =$ ");
+        TeXPrint(newnode, Aconst, out);
         fprintf(out, "\n\n");
     }
 
@@ -355,7 +372,7 @@ Node* DiffPower(Node* node, Phrases* phrases, FILE* out)
         searchright = TreeDepthSearch(node->rightchild, var);
 
     if (searchleft && searchright)
-        return MUL(POWER(CREATEVAR(e), MUL(LN(NULL, CL), CR)), DiffNode(MUL(LN(NULL, CL), CR), phrases, out));
+        return MUL(POWER(CREATEVAR(Econst), MUL(LN(NULL, CL), CR)), DiffNode(MUL(LN(NULL, CL), CR), phrases, out));
     else if (searchleft)
         return MUL(MUL(CR, POWER(CL, SUB(CR, CREATENUM(1)))), DL);
     else if (searchright)
@@ -390,6 +407,7 @@ int CreateAncestor(Node* node, Node* ancestor, Tree* tree)
     DBG assert (node != NULL);
 
     node->tree = tree;
+    tree->size++;
 
     if (node->leftchild)
         CreateAncestor(node->leftchild, node, tree);
@@ -447,46 +465,28 @@ int SimplifyConstantNode(Node* node)
     if (node->leftchild->type != NUM_TYPE || node->rightchild->type != NUM_TYPE)
         return NOERR;
 
+    if (node->optype == OP_LOG || node->optype == OP_DIV)
+        return NOERR;
+
     if (node->optype == OP_SUB)
-    {
-        node->type = NUM_TYPE;
         node->val = node->leftchild->val - node->rightchild->val;
-        node->varvalue = NULL;
-        node->optype = OP_UNKNOWN;
-        node->leftchild = NULL;
-        node->rightchild = NULL;
-        CHANGE = true;
-    }
+
     else if (node->optype == OP_MUL)
-    {
-        node->type = NUM_TYPE;
         node->val = node->leftchild->val * node->rightchild->val;
-        node->varvalue = NULL;
-        node->optype = OP_UNKNOWN;
-        node->leftchild = NULL;
-        node->rightchild = NULL;
-        CHANGE = true;
-    }
+
     else if (node->optype == OP_ADD)
-    {
-        node->type = NUM_TYPE;
         node->val = node->leftchild->val + node->rightchild->val;
-        node->varvalue = NULL;
-        node->optype = OP_UNKNOWN;
-        node->leftchild = NULL;
-        node->rightchild = NULL;
-        CHANGE = true;
-    }
+
     else if (node->optype == OP_POWER)
-    {
-        node->type = NUM_TYPE;
         node->val = pow(node->leftchild->val, node->rightchild->val);
-        node->varvalue = NULL;
-        node->optype = OP_UNKNOWN;
-        node->leftchild = NULL;
-        node->rightchild = NULL;
-        CHANGE = true;
-    }
+
+    node->type = NUM_TYPE;
+    node->varvalue = NULL;
+    node->optype = OP_UNKNOWN;
+    node->leftchild = NULL;
+    node->rightchild = NULL;
+    CHANGE = true;
+
     return NOERR;
 }
 
@@ -521,162 +521,104 @@ int CheckNDeleteNode(Node* node)
     }
 
     if (IS_OP(OP_MUL) && IS_LVAL(1))
-    {
-        if (node == node->tree->anchor)
-            DeleteAnchor(node);
+        ChangeIntoChild(node, RIGHT);
 
-        else if (node == node->ancestor->leftchild)
-        {
-            node->ancestor->leftchild = node->rightchild;
-            node->rightchild->ancestor = node->ancestor;
-            free(node->leftchild);
-            free(node);
-        }
-        else if (node == node->ancestor->rightchild)
-        {
-            node->ancestor->rightchild = node->rightchild;
-            node->rightchild->ancestor = node->ancestor;
-            free(node->leftchild);
-            free(node);
-        }
-        CHANGE = true;
-    }
+    else if (IS_OP(OP_MUL) && IS_LVAL(0))
+        ChangeNodeIntoNum(node, 0);
 
-    if (IS_OP(OP_MUL) && IS_LVAL(0))
-    {
-        if (node == node->tree->anchor)
-        {
-            node->type = NUM_TYPE;
-            node->val = 0;
-            node->varvalue = NULL;
-            node->optype = OP_UNKNOWN;
-            node->leftchild = NULL;
-            node->rightchild = NULL;
-            node->ancestor = NULL;
-            node->tree->anchor = node;
-        }
-        else
-        {
-            node->type = NUM_TYPE;
-            node->val = 0;
-            node->varvalue = NULL;
-            node->optype = OP_UNKNOWN;
-            node->leftchild = NULL;
-            node->rightchild = NULL;
-        }
-        CHANGE = true;
-    }
+    else if (IS_OP(OP_ADD) && IS_LVAL(0))
+        ChangeIntoChild(node, RIGHT);
 
-    if (IS_OP(OP_ADD) && IS_LVAL(0))
-    {
-        if (node == node->tree->anchor)
-            DeleteAnchor(node);
+    else if (IS_OP(OP_SUB) && IS_LVAL(0))
+        ChangeIntoChild(node, RIGHT);
 
-        else if (node == node->ancestor->leftchild)
-        {
-            node->ancestor->leftchild = node->rightchild;
-            node->rightchild->ancestor = node->ancestor;
-            free(node->leftchild);
-            free(node);
-        }
-        else if (node == node->ancestor->rightchild)
-        {
-            node->ancestor->rightchild = node->rightchild;
-            node->rightchild->ancestor = node->ancestor;
-            free(node->leftchild);
-            free(node);
-        }
-        CHANGE = true;
-    }
+    else if (IS_OP(OP_POWER) && IS_RVAL(0))
+        ChangeNodeIntoNum(node, 1);
 
-    if (IS_OP(OP_SUB) && IS_LVAL(0))
-    {
-        if (node == node->tree->anchor)
-            DeleteAnchor(node);
+    else if (IS_OP(OP_POWER) && IS_RVAL(1))
+        ChangeIntoChild(node, LEFT);
 
-        else if (node == node->ancestor->leftchild)
-        {
-            node->ancestor->leftchild = node->rightchild;
-            node->rightchild->ancestor = node->ancestor;
-            free(node->leftchild);
-            free(node);
-        }
-        else if (node == node->ancestor->rightchild)
-        {
-            node->ancestor->rightchild = node->rightchild;
-            node->rightchild->ancestor = node->ancestor;
-            free(node->leftchild);
-            free(node);
-        }
-        CHANGE = true;
-    }
-
-    if (IS_OP(OP_POWER) && IS_RVAL(0))
-    {
-        node->type = NUM_TYPE;
-        node->val = 1;
-        node->varvalue = NULL;
-        node->optype = OP_UNKNOWN;
-        node->leftchild = NULL;
-        node->rightchild = NULL;
-
-        if (node == node->tree->anchor)
-            node->ancestor = NULL;
-
-        CHANGE = true;
-    }
-
-    if (IS_OP(OP_POWER) && IS_RVAL(1))
-    {
-        if (node == node->tree->anchor)
-        {
-            node->tree->anchor = node->leftchild;
-            free(node->rightchild);
-            free(node);
-        }
-
-        else if (node == node->ancestor->leftchild)
-        {
-            node->ancestor->leftchild = node->leftchild;
-            node->leftchild->ancestor = node->ancestor;
-            free(node->rightchild);
-            free(node);
-        }
-        else if (node == node->ancestor->rightchild)
-        {
-            node->ancestor->rightchild = node->leftchild;
-            node->leftchild->ancestor = node->ancestor;
-            free(node->rightchild);
-            free(node);
-        }
-        CHANGE = true;
-    }
-
-    if (IS_OP(OP_DIV) && IS_LVAL(0))
-    {
-        node->type = NUM_TYPE;
-        node->val = 0;
-        node->varvalue = NULL;
-        node->optype = OP_UNKNOWN;
-        node->leftchild = NULL;
-        node->rightchild = NULL;
-
-        if (node == node->tree->anchor)
-            node->ancestor = NULL;
-
-        CHANGE = true;
-    }
+    else if (IS_OP(OP_DIV) && IS_LVAL(0))
+        ChangeNodeIntoNum(node, 0);
 
     return NOERR;
 }
 
-int DeleteAnchor(Node* node)
+int ChangeIntoChild(Node* node, Side side)
+{
+    if (node == node->tree->anchor)
+        return DeleteAnchor(node, side);
+
+    Node* child = NULL;
+    Node* killchild = NULL;
+
+    if (side == RIGHT)
+    {
+        child = node->rightchild;
+        killchild = node->leftchild;
+    }
+    else
+    {
+        child = node->leftchild;
+        killchild = node->rightchild;
+    }
+
+    if (node == node->ancestor->leftchild)
+    {
+        node->ancestor->leftchild = child;
+        child->ancestor = node->ancestor;
+        node->tree->size--;
+        NodeDetor(killchild);
+        free(node);
+    }
+    else if (node == node->ancestor->rightchild)
+    {
+        node->ancestor->rightchild = child;
+        child->ancestor = node->ancestor;
+        node->tree->size--;
+        NodeDetor(killchild);
+        free(node);
+    }
+    CHANGE = true;
+
+    return NOERR;
+}
+
+int ChangeNodeIntoNum(Node* node, double val)
+{
+    node->type = NUM_TYPE;
+    node->val = val;
+    node->varvalue = NULL;
+    node->optype = OP_UNKNOWN;
+    free(node->rightchild);
+    free(node->leftchild);
+    node->leftchild = NULL;
+    node->rightchild = NULL;
+
+    if (node == node->tree->anchor)
+        node->ancestor = NULL;
+
+    CHANGE = true;
+
+    return NOERR;
+}
+
+int DeleteAnchor(Node* node, Side side)
 {
     DBG assert(node != NULL);
 
-    node->tree->anchor = node->rightchild;
-    free(node);
-    free(node->leftchild);
+    if (side == RIGHT)
+    {
+        node->tree->anchor = node->rightchild;
+        free(node);
+        NodeDetor(node->leftchild);
+    }
+    else
+    {
+        node->tree->anchor = node->leftchild;
+        free(node);
+        NodeDetor(node->rightchild);
+    }
 
     return NOERR;
 }
@@ -750,14 +692,46 @@ double CalculateNode(Node* node, double x)
     }
 }
 
-Tree DiffFuncOnce(Tree* datatree, Phrases* phrases, FILE* out)
+int SubTreeSize(Node* node)
+{
+    int size = 0;
+
+    CountSubTreeSize(node, &size);
+
+    return size;
+}
+
+int CountSubTreeSize(Node* node, int* size)
+{
+    *size += 1;
+    int origsize = *size;
+    int size1 = 0;
+    int size2 = 0;
+
+    if (node->leftchild)
+        size1 = CountSubTreeSize(node->leftchild, size) - origsize;
+    if (node->rightchild)
+        size2 = CountSubTreeSize(node->rightchild, size) - size1;
+
+    if (node->optype == OP_DIV)
+    {
+        if (size1 > size2)
+            *size -= size2;
+        else
+            *size -= size1;
+    }
+
+    return *size;
+}
+
+Tree DiffFuncOnce(Tree* datatree, Phrases* diffphrases, FILE* out)
 {
     Tree difftree = {};
     char difftreelog[STRSIZE] = "difftreelog.htm";
     TreeCtor(&difftree, UNKNOWN_TYPE, 0, OP_UNKNOWN, NULL, difftreelog);
-    fprintf(out, "Äàâàéòå æå âîçüìåì åå ïðîèçâîäíóþ âî èìÿ ìàòàíà\n\n");
+    fprintf(out, "Ïðîäèôôåðåíöèðóåì æå ýòó ôóíêöèþ âî èìÿ Áîãà-Ìàøèíû\n\n");
 
-    Node* newanchor = DiffNode(datatree->anchor, phrases, out);
+    Node* newanchor = DiffNode(datatree->anchor, diffphrases, out);
 
     difftree.anchor = newanchor;
     difftree.anchor->tree = &difftree;
@@ -765,9 +739,28 @@ Tree DiffFuncOnce(Tree* datatree, Phrases* phrases, FILE* out)
     CreateAncestor(difftree.anchor, NULL, &difftree);
     SimplifyFunc(&difftree);
 
+    fprintf(out, "Èòàê, ñ áëàãîñëîâëåíèåì Îìíèññèè ìû ïîëó÷èëè:\n\n");
+    fprintf(out, "$$(");
+    TeXPrint(datatree->anchor, Aconst, out);
+    fprintf(out, ")' = ");
+    TeXPrint(difftree.anchor, Aconst, out);
+    fprintf(out, "$$\n\n");
+
     TreeGraphDump(&difftree, 0, __LINE__, __func__, __FILE__);
 
     return difftree;
+}
+
+int TangentEquation(Tree* datatree, Tree* difftree, double x, FILE* out)
+{
+    fprintf(out, "Äëÿ ïðîâåäåíèÿ ýêñòåðìèíàòóñà î÷åâèäíî íåîáõîäèìî çíàòü óðàâíåíèå êàñàòåëüíîé â òî÷êå $x = %0.2lg$, òàê åðåòèêîâ îñòàíåòñÿ ìåíüøå\n\n", x);
+
+    double derval = CalculateNode(difftree->anchor, x);
+    double val = CalculateNode(datatree->anchor, x);
+
+    fprintf(out, "$$y = %.2lgx + %.2lg$$\n\n", derval, val+derval*x);
+
+    return NOERR;
 }
 
 int MaclaurinSeries(Tree* datatree, Tree* difftree, Phrases* phrases, FILE* out)
@@ -782,9 +775,11 @@ int MaclaurinSeries(Tree* datatree, Tree* difftree, Phrases* phrases, FILE* out)
     Tree seriestree = {};
     TreeCtor(&seriestree, NUM_TYPE, CalculateNode(datatree->anchor, 0), OP_UNKNOWN, NULL, serieslog);
 
-    Node* seriesanch = ADD(NULL, MUL(CREATENUM(CalculateNode(difftree->anchor, 0)), CREATEVAR(x)));
-    seriesanch->leftchild = seriestree.anchor;
-    seriestree.anchor = seriesanch;
+    Node* node = (Node*) calloc(1, sizeof(node));
+    node->tree = &seriestree;
+    node = ADD(NULL, MUL(CREATENUM(CalculateNode(difftree->anchor, 0)), CREATEVAR(Xconst)));
+    node->leftchild = seriestree.anchor;
+    seriestree.anchor = node;
 
     for (int counter = 2; counter <= order; counter++)
     {
@@ -798,22 +793,55 @@ int MaclaurinSeries(Tree* datatree, Tree* difftree, Phrases* phrases, FILE* out)
 
         TreeGraphDump(difftree, 0, __LINE__, __func__, __FILE__);
 
-        seriesanch = ADD(NULL, MUL(DIV(CREATENUM(CalculateNode(difftree->anchor, 0)), CREATENUM(Factorial(counter))), POWER(CREATEVAR(x), CREATENUM(counter))));
-        seriesanch->leftchild = seriestree.anchor;
-        seriestree.anchor = seriesanch;
+        node = ADD(NULL, MUL(DIV(CREATENUM(CalculateNode(difftree->anchor, 0)), CREATENUM(Factorial(counter))), POWER(CREATEVAR(Xconst), CREATENUM(counter))));
+        node->leftchild = seriestree.anchor;
+        seriestree.anchor = node;
         seriestree.anchor->tree = &seriestree;
         TreeGraphDump(&seriestree, 0, __LINE__, __func__, __FILE__);
-
     }
-
 
     CreateAncestor(seriestree.anchor, NULL, &seriestree);
     SimplifyFunc(&seriestree);
     TreeGraphDump(&seriestree, 0, __LINE__, __func__, __FILE__);
 
-    fprintf(out, "$$");
-    TeXNodePrint(seriestree.anchor, out);
-    fprintf(out, "$$");
+    TeXPrint(datatree->anchor, Aconst, out);
+    fprintf(out, " $=$ ");
+    TeXPrint(seriestree.anchor, Aconst, out);
+
+    TreeDetor(&seriestree);
+
+    return NOERR;
+}
+
+int CreateGraphic(Tree* datatree, double left, double right, FILE* out)
+{
+    FILE* graphic = fopen("graphic.txt", "w");
+
+    for (double x = left; x < right; x += 0.02)
+        fprintf(graphic, "%lg %lg\n", x, CalculateNode(datatree->anchor, x));
+
+    system("py graphic.py");
+    fprintf(out,    "\\begin{figure}[h!]\n"
+                    "\\begin{center}\n"
+                    "\\includegraphics{graphic}\n"
+                    "\\end{center}\n"
+                    "\\caption{Ãðàôèê êîëè÷åñòâà åðåòèêîâ}\n"
+                    "\\end{figure}\n\n");
+
+    return NOERR;
+}
+
+int Priority(Node* node)
+{
+    if (node->type != OP_TYPE)
+        return NOERR;
+
+    if (node->optype == OP_ADD || node->optype == OP_SUB)
+        return 1;
+    else if (node->optype == OP_MUL || node->optype == OP_DIV)
+        return 2;
+    else
+        return -1;
 
     return NOERR;
 }
@@ -830,40 +858,93 @@ int Factorial(int n)
     return fact;
 }
 
-int TeXPrint(Node* node, FILE* out)
+int TeXPrint(Node* node, char* repl, FILE* out)
 {
-    printf("node = %p\n", node);
+    char replace = *repl;
+    int sizeleft = 0;
+    int sizeright = 0;
+    Node* right = node->rightchild;
+    Node* left = node->leftchild;
 
-    fprintf(out, "$$");
-    TeXNodePrint(node, out);
-    fprintf(out, "$$\n\n");
+    if (node->leftchild)
+        sizeleft = SubTreeSize(node->leftchild);
+    if (node->rightchild)
+        sizeright = SubTreeSize(node->rightchild);
+
+    printf("size = %d\n", sizeleft+sizeright);
+
+    if (sizeleft + sizeright + 1 <= RECOMENDSIZE)
+    {
+        fprintf(out, " $ ");
+        printf("HERE1\n");
+        TeXNodePrint(node, node, out);
+        fprintf(out, " $ ");
+    }
+
+    if (sizeleft > RECOMENDSIZE && sizeright > RECOMENDSIZE)
+    {
+        node->leftchild =  CREATEVAR(repl);
+        *repl = (char)(*repl +  1);
+        node->rightchild = CREATEVAR(repl);
+        fprintf(out, " $ ");
+        TeXNodePrint(node, node, out);
+        fprintf(out, "\n\n$Ãäå %c = $ ", replace);
+        *repl = (char)(*repl +  1);
+        TeXPrint(right, repl, out);
+        fprintf(out, "\n\n%c = ", replace - 1);
+        *repl = (char)(*repl +  1);
+        TeXPrint(left, repl, out);
+    }
+    else if (sizeleft + 1 > RECOMENDSIZE)
+    {
+        printf("HERE2\n");
+        node->leftchild =  CREATEVAR(repl);
+        fprintf(out, " $ ");
+        TeXNodePrint(node, node, out);
+        fprintf(out, " $ ");
+        printf("HERE2\n");
+        fprintf(out, "\n\nÃäå $%c = $ ", replace);
+        *repl = (char)(*repl +  1);
+        printf("HERE3\n");
+        TeXPrint(left, repl, out);
+        printf("HERE4\n");
+    }
+    else if (sizeright + 1 > RECOMENDSIZE)
+    {
+        node->rightchild = CREATEVAR(repl);
+        fprintf(out, " $ ");
+        TeXNodePrint(node, node, out);
+        *repl =(char)(*repl +  1);
+        fprintf(out, " $\n\nÃäå $ %c = $ ", replace);
+        TeXPrint(right, repl, out);
+    }
+
+    node->rightchild = right;
+    node->leftchild = left;
 
     return NOERR;
 }
 
-int TeXNodePrint(Node* node, FILE* out)
+int TeXNodePrint(Node* startnode, Node* node, FILE* out)
 {
-
-    TeXDataStartPrint(node, out);
-//    if (node->optype != OP_SIN && node->optype != OP_COS && node->optype != OP_UNKNOWN && !node->tree)
-//        fprintf(out, "(");
+    TeXDataStartPrint(startnode, node, out);
 
     if (node->leftchild && !IsOneArg(node))
-        TeXNodePrint(node->leftchild, out);
+        TeXNodePrint(startnode, node->leftchild, out);
 
     TeXDataPrint(node, out);
 
     if (node->rightchild)
-        TeXNodePrint(node->rightchild, out);
+        TeXNodePrint(startnode, node->rightchild, out);
 
-    TeXDataEndPrint(node, out);
+    TeXDataEndPrint(startnode, node, out);
 
     return NOERR;
 }
 
-int TeXDataStartPrint(Node* node, FILE* out)
+int TeXDataStartPrint(Node* startnode, Node* node, FILE* out)
 {
-    if (node->tree && node == node->tree->anchor && node->optype != OP_DIV)
+    if (node == startnode && node->optype != OP_DIV)
         return NOERR;
 
     switch (node->type)
@@ -874,35 +955,11 @@ int TeXDataStartPrint(Node* node, FILE* out)
             break;
         case OP_TYPE:
         {
-            if (node->optype == OP_COS)
-                break;
-            else if (node->optype == OP_SIN)
-                break;
-            else if (node->optype == OP_POWER)
-                break;
-            else if (node->optype == OP_LOG)
-                break;
-            else if (node->optype == OP_TG)
-                break;
-            else if (node->optype == OP_CTG)
-                break;
-            else if (node->optype == OP_DIV)
+            if (node->optype == OP_DIV)
                 fprintf(out, "\\frac{");
-            else if (node->optype == OP_LN)
+            else if (node->optype >= 5)
                 break;
-            else if (node->optype == OP_SQRT)
-                break;
-            else if (node->optype == OP_ARCSIN)
-                break;
-            else if (node->optype == OP_ARCCOS)
-                break;
-            else if (node->optype == OP_ARCTG)
-                break;
-            else if (node->optype == OP_ARCCTG)
-                break;
-            else if (node->optype == OP_SH)
-                break;
-            else if (node->optype == OP_CH)
+            else if (node->ancestor && Priority(node) >= Priority(node->ancestor))
                 break;
             else
                 fprintf(out, "(");
@@ -999,9 +1056,9 @@ int TeXDataPrint(Node* node, FILE* out)
     return NOERR;
 }
 
-int TeXDataEndPrint(Node* node, FILE* out)
+int TeXDataEndPrint(Node* startnode, Node* node, FILE* out)
 {
-    if (node->tree && node == node->tree->anchor && !IsOneArg(node))
+    if (node == startnode && !IsOneArg(node))
         return NOERR;
 
     switch (node->type)
@@ -1012,36 +1069,10 @@ int TeXDataEndPrint(Node* node, FILE* out)
             break;
         case OP_TYPE:
         {
-            if (node->optype == OP_COS)
+            if (node->optype == OP_DIV || node->optype >= 5)
                 fprintf(out, "}");
-            else if (node->optype == OP_SIN)
-                fprintf(out, "}");
-            else if (node->optype == OP_POWER)
-                fprintf(out, "}");
-            else if (node->optype == OP_TG)
-                fprintf(out, "}");
-            else if (node->optype == OP_CTG)
-                fprintf(out, "}");
-            else if (node->optype == OP_LN)
-                fprintf(out, "}");
-            else if (node->optype == OP_DIV)
-                fprintf(out, "}");
-            else if (node->optype == OP_SQRT)
-                fprintf(out, "}");
-            else if (node->optype == OP_ARCSIN)
-                fprintf(out, "}");
-            else if (node->optype == OP_ARCCOS)
-                fprintf(out, "}");
-            else if (node->optype == OP_ARCTG)
-                fprintf(out, "}");
-            else if (node->optype == OP_ARCCTG)
-                fprintf(out, "}");
-            else if (node->optype == OP_SH)
-                fprintf(out, "}");
-            else if (node->optype == OP_CH)
-                fprintf(out, "}");
-            else if (node->optype == OP_LOG)
-                fprintf(out, "}");
+            else if (node->ancestor && Priority(node) >= Priority(node->ancestor))
+                break;
             else
                 fprintf(out, ")");
             break;
@@ -1092,131 +1123,49 @@ int PrepareTeXFile(FILE* out)
                     "\\begin{titlepage}                                                          \n"
                     "	\\begin{center}                                                         \n"
                     "		{                                                                   \n"
-                    "        \\large ÌÎÑÊÎÂÑÊÈÉ ÔÈÇÈÊÎ-ÒÅÕÍÈ×ÅÑÊÈÉ ÈÍÑÒÈÒÓÒ}                     \n"
+                    "        \\large ˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜-˜˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜}                     \n"
                     "	\\end{center}                                                           \n"
                     "	\\begin{center}                                                         \n"
-                    "		{\\large Ôèçòåõ-øêîëà ðàäèîòåõíèêè è êîìïüþòåðíûõ òåõíîëîãèé}       \n"
+                    "		{\\large ˜˜˜˜˜˜-˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜˜˜ ˜ ˜˜˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜}       \n"
                     "	\\end{center}                                                           \n"
                     "                                                                            \n"
                     "                                                                            \n"
                     "	\\vspace{4.5cm}                                                         \n"
                     "	{\\huge                                                                 \n"
                     "		\\begin{center}                                                     \n"
-                    "			{\\bf Äèôôåðåíöèðîâàíèå ôóíêöèè ïî çàâåòàì Ìåõàíèêóñ}\\         \n"
+                    "			{\\bf ˜˜˜˜˜˜˜˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜ ˜˜ ˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜}\\         \n"
                     "		\\end{center}                                                       \n"
                     "	}                                                                       \n"
                     "	\\vspace{2cm}                                                           \n"
                     "	\\begin{flushright}                                                     \n"
-                    "		{\\LARGE ÀÂÒÎÐ:\\\\ Ìàãîñ Òåõíèêóñ Àëåêñàíäóñ Ïëàñòèíèóñ \\\\       \n"
+                    "		{\\LARGE ˜˜˜˜˜:\\\\ ˜˜˜˜˜ ˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜ \\\\       \n"
                     "			\\vspace{0.2cm}}                                                \n"
                     "	\\end{flushright}                                                       \n"
                     "	\\vspace{8cm}                                                           \n"
                     "	\\begin{center}                                                         \n"
-                    "		Äîëãîïðóäíûé 2022                                                   \n"
+                    "		˜˜˜˜˜˜˜˜˜˜˜˜ 2022                                                   \n"
                     "	\\end{center}                                                           \n"
                     "\\end{titlepage}                                                            \n"
                     "\n");
 
-    fprintf(out, "\\section{Ââåäåíèå}\n"
-            "Âòîðîå òûñÿ÷åëåòèå.\n\n"
-            "Óæå áîëåå òðåõ âåêîâ Ìàòàí íåäâèæèì íà Çîëîòîì Òðîíå Íàóê.\n\n"
-            "Îí — Ïîâåëèòåëü ×åëîâå÷åñòâà è âëàñòåëèí ìèðèàäîâ ëþäåé, çàâîåâàííûõ ìîãóùåñòâîì Åãî íåèñ÷èñëèìûõ ôóíêöèé.\n\n"
-            "Îí — ïîëóòðóï, íåóëîâèìóþ èñêðó æèçíè â êîòîðîì ïîääåðæèâàþò äðåâíèå çíàíèÿ, è ðàäè ýòîãî åæåäíåâíî ïðèíîñèòñÿ â æåðòâó òûñÿ÷à äóø. È ïîýòîìó Âëàäûêà ×åëîâå÷åñòâà íèêîãäà íå óìèðàåò ïî-íàñòîÿùåìó.\n\n"
-            "Äàæå â ñâîåì íûíåøíåì ñîñòîÿíèè Ìàòàí ïðîäîëæàåò ìèññèþ, äëÿ êîòîðîé ïîÿâèëñÿ íà ñâåò.\n\n"
-            "Ìîãó÷èå áîåâûå ìàòåìàòèêè ïåðåñåêàþò êèøàùèé äåìîíàìè îáû÷íûé ìèð, è ïóòü ýòîò îñâåùåí Ôèçòåõîì, çðèìûì ïðîÿâëåíèåì äóõîâíîé âîëè Ìàòàíà.\n\n"
-            "Îãðîìíûå àðìèè ñðàæàþòñÿ âî èìÿ Åãî íà áåñ÷èñëåííûõ ïîëÿõ òåòðàäåé.\n\n"
-            "Âåëè÷àéøèå ñðåäè åãî ñîëäàò — ïðåïîäû ìàòàíà, ìàòåìàòè÷åñêèå äåñàíòíèêè, ãåíåòè÷åñêè óëó÷øåííûå ñóïåðâîèíû.\n\n"
-            "Ó íèõ ìíîãî òîâàðèùåé ïî îðóæèþ: Àñïèðàíòñêàÿ Ãâàðäèÿ è áåñ÷èñëåííûå Ñèëû Ñòóäåí÷åñêîé Îáîðîíû, âå÷íî áäèòåëüíûé Äåêàíàò è òåõíîæðåöû Àäåïòóñ Èíôîðìàòèêóñ.\n\n"
-            "Íî, íåñìîòðÿ íà âñå ñòàðàíèÿ, èõ ñèë åäâà õâàòàåò, ÷òîáû ñäåðæèâàòü èçâå÷íóþ óãðîçó ñî ñòîðîíû ôèçèêîâ, õèìèêîâ è áèîëîãîâ.\n\n"
-            "Áûòü ôèçòåõîì â òàêîå âðåìÿ — çíà÷èò áûòü îäíèì èç òûñÿ÷.\n\n"
-            "Ýòî çíà÷èò æèòü ïðè ñàìîì æåñòîêîì è êðîâàâîì ðåæèìå, êîòîðûé òîëüêî ìîæíî ïðåäñòàâèòü.\n\n"
-            "Çàáóäüòå î äîñòèæåíèÿõ îáùåñîñà è ïðîãè, èáî ìíîãîå çàáûòî è íèêîãäà íå áóäåò îòêðûòî çàíîâî.\n\n"
-            "Çàáóäüòå î ïåðñïåêòèâàõ, îáåùàííûõ ïðîãðåññîì, î âçàèìîïîíèìàíèè, èáî âî ìðàêå ÌÔÒÈ åñòü òîëüêî âîéíà.\n\n"
-            "Íåò ìèðà ñðåäè àóäèòîðèé — ëèøü âå÷íàÿ áîéíÿ è êðîâîïðîëèòèå, äà ñìåõ æàæäóùèõ ôîïôîâ.\n\n");
-    fprintf(out,    "\\section{Åå âåëè÷åñòâî ôóíêöèÿ}\n\n");
-    fprintf(out, "Ôóíêöèÿ êîëè÷åñòâà åðåòèêîâ îò êîëè÷åñòâà ïàð ìàòàíà â íåäåëþ ïðåäñòàâëÿåòñÿ ñëåäóþùèì îáðàçîì: \n\n");
-    return NOERR;
-}
-
-int DataPrint(Node* node, FILE* out)
-{
-    switch (node->type)
-    {
-        case NUM_TYPE:
-            fprintf(out, "{%.0lf}", node->val);
-            break;
-        case VAR_TYPE:
-            fprintf(out, "{%s}", node->varvalue);
-            break;
-        case OP_TYPE:
-            switch (node->optype)
-            {
-                case OP_ADD:
-                    fprintf(out, "+");
-                    break;
-                case OP_SUB:
-                    fprintf(out, "-");
-                    break;
-                case OP_MUL:
-                    fprintf(out, "*");
-                    break;
-                case OP_DIV:
-                    fprintf(out, "/");
-                    break;
-                case OP_COS:
-                    fprintf(out, "cos");
-                    break;
-                case OP_SIN:
-                    fprintf(out, "sin");
-                    break;
-                case OP_POWER:
-                    fprintf(out, "^");
-                    break;
-                case OP_TG:
-                    fprintf(out, "tg");
-                    break;
-                case OP_CTG:
-                    fprintf(out, "ctg");
-                    break;
-                case OP_LN:
-                    fprintf(out, "ln");
-                    break;
-                case OP_LOG:
-                    fprintf(out, "log");
-                    break;
-                case OP_UNKNOWN:
-                    fprintf(out, "UNKNOWN OP\n");
-                    break;
-                default:
-                    fprintf(out, "UNKNOWN OP\n");
-                    break;
-            }
-            break;
-        case UNKNOWN_TYPE:
-            break;
-        default:
-            break;
-    }
-
-    return NOERR;
-}
-
-int NodePrint(Node* node)
-{
-    assert(node != NULL);
-
-    printf("(");
-
-    if (node->leftchild)
-        NodePrint(node->leftchild);
-
-    DataPrint(node, stdout);
-
-    if (node->rightchild)
-        NodePrint(node->rightchild);
-
-    printf(")");
-
+    fprintf(out, "\\section{˜˜˜˜˜˜˜˜}\n"
+            "˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜˜.\n\n"
+            "˜˜˜ ˜˜˜˜˜ ˜˜˜˜ ˜˜˜˜˜ ˜˜˜˜˜ ˜˜˜˜˜˜˜˜ ˜˜ ˜˜˜˜˜˜˜ ˜˜˜˜˜ ˜˜˜˜.\n\n"
+            "˜˜ ˜ ˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜˜˜ ˜ ˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜ ˜˜˜˜˜, ˜˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜˜ ˜˜˜ ˜˜˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜.\n\n"
+            "˜˜ ˜ ˜˜˜˜˜˜˜˜, ˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜ ˜˜˜˜˜ ˜ ˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜ ˜˜˜˜˜˜, ˜ ˜˜˜˜ ˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜ ˜ ˜˜˜˜˜˜ ˜˜˜˜˜˜ ˜˜˜. ˜ ˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜ ˜˜ ˜˜˜˜˜˜˜ ˜˜-˜˜˜˜˜˜˜˜˜˜.\n\n"
+            "˜˜˜˜ ˜ ˜˜˜˜˜ ˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜, ˜˜˜ ˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜ ˜˜ ˜˜˜˜.\n\n"
+            "˜˜˜˜˜˜˜ ˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜ ˜˜˜, ˜ ˜˜˜˜ ˜˜˜˜ ˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜, ˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜ ˜˜˜˜ ˜˜˜˜˜˜.\n\n"
+            "˜˜˜˜˜˜˜˜ ˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜ ˜˜ ˜˜˜ ˜˜˜ ˜˜ ˜˜˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜ ˜˜˜˜˜˜˜˜.\n\n"
+            "˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜ ˜˜˜ ˜˜˜˜˜˜ ˜ ˜˜˜˜˜˜˜ ˜˜˜˜˜˜, ˜˜˜˜˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜, ˜˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜.\n\n"
+            "˜ ˜˜˜ ˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜ ˜˜ ˜˜˜˜˜˜: ˜˜˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜ ˜ ˜˜˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜, ˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜ ˜ ˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜˜˜.\n\n"
+            "˜˜, ˜˜˜˜˜˜˜˜ ˜˜ ˜˜˜ ˜˜˜˜˜˜˜˜, ˜˜ ˜˜˜ ˜˜˜˜ ˜˜˜˜˜˜˜, ˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜ ˜˜ ˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜, ˜˜˜˜˜˜˜ ˜ ˜˜˜˜˜˜˜˜.\n\n"
+            "˜˜˜˜ ˜˜˜˜˜˜˜˜ ˜ ˜˜˜˜˜ ˜˜˜˜˜ ˜ ˜˜˜˜˜˜ ˜˜˜˜ ˜˜˜˜˜ ˜˜ ˜˜˜˜˜.\n\n"
+            "˜˜˜ ˜˜˜˜˜˜ ˜˜˜˜ ˜˜˜ ˜˜˜˜˜ ˜˜˜˜˜˜˜˜ ˜ ˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜, ˜˜˜˜˜˜˜ ˜˜˜˜˜˜ ˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜˜.\n\n"
+            "˜˜˜˜˜˜˜˜ ˜ ˜˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜ ˜ ˜˜˜˜˜, ˜˜˜ ˜˜˜˜˜˜ ˜˜˜˜˜˜ ˜ ˜˜˜˜˜˜˜ ˜˜ ˜˜˜˜˜ ˜˜˜˜˜˜˜ ˜˜˜˜˜˜.\n\n"
+            "˜˜˜˜˜˜˜˜ ˜ ˜˜˜˜˜˜˜˜˜˜˜˜, ˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜, ˜ ˜˜˜˜˜˜˜˜˜˜˜˜˜˜˜, ˜˜˜ ˜˜ ˜˜˜˜˜ ˜˜˜˜ ˜˜˜˜ ˜˜˜˜˜˜ ˜˜˜˜˜.\n\n"
+            "˜˜˜ ˜˜˜˜ ˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜ ˜ ˜˜˜˜ ˜˜˜˜˜˜ ˜˜˜˜˜ ˜ ˜˜˜˜˜˜˜˜˜˜˜˜˜, ˜˜ ˜˜˜˜ ˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜.\n\n");
+    fprintf(out,    "\\section{˜˜ ˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜}\n\n");
+    fprintf(out, "˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜ ˜˜ ˜˜˜˜˜˜˜˜˜˜ ˜˜˜ ˜˜˜˜˜˜ ˜ ˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜˜˜ ˜˜˜˜˜˜˜: \n\n");
     return NOERR;
 }
 

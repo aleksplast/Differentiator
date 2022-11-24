@@ -7,6 +7,12 @@
 #include "dsl.h"
 #include "recursivedescent.h"
 
+enum Side
+{
+    LEFT,
+    RIGHT,
+};
+
 typedef poem Phrases;
 
 int DifferentiatorMain(char* input);
@@ -37,31 +43,41 @@ int DeleteMeaninglessNodes(Node* node);
 
 int CheckNDeleteNode(Node* node);
 
-int DeleteAnchor (Node* node);
+int ChangeNodeIntoNum(Node* node, double val);
+
+int ChangeIntoChild(Node* node, Side side);
+
+int DeleteAnchor (Node* node, Side side);
 
 double CalculateNode(Node* node, double x);
 
-Tree DiffFuncOnce(Tree* datatree, Phrases* phrases, FILE* out);
+int CountSubTreeSize(Node* node, int* size);
+
+int SubTreeSize(Node* node);
+
+Tree DiffFuncOnce(Tree* datatree, Phrases* diffphrases, FILE* out);
 
 int MaclaurinSeries(Tree* datatree, Tree* difftree, Phrases* phrases, FILE* out);
 
-int TeXPrint(Node* node, FILE* out);
+int TangentEquation(Tree* datatree, Tree* difftree, double x, FILE* out);
+
+int CreateGraphic(Tree* datatree, double left, double right, FILE* out);
+
+int Priority(Node* node);
+
+int TeXPrint(Node* node, char* repl, FILE* out);
 
 int PrepareTeXFile(FILE* out);
 
-int TeXNodePrint(Node* node, FILE* out);
+int TeXNodePrint(Node* startnode, Node* node, FILE* out);
 
-int NodePrint(Node* node);
+int TeXDataStartPrint(Node* startnode, Node* node, FILE* out);
 
-int DataPrint(Node* node, FILE* out);
-
-int TeXDataStartPrint(Node* node, FILE* out);
-
-int TeXDataEndPrint(Node* node, FILE* out);
+int TeXDataEndPrint(Node* startnode, Node* node, FILE* out);
 
 int TeXDataPrint(Node* node, FILE* out);
 
-Node* CreateNode(NodeType type, double val, OperType optype, char* varvalue, Node* leftchild, Node* rightchild);
+Node* CreateNode(NodeType type, double val, OperType optype, char* varvalue, Tree* tree, Node* ancestor, Node* leftchild, Node* rightchild);
 
 int Factorial(int n);
 

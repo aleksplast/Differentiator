@@ -86,7 +86,7 @@ int TypePrint(FILE* fp, NodeType type);
 
 int OpTypePrint(FILE* fp, OperType opertype);
 
-int NodeDetor(Tree* tree, Node* node);
+int NodeDetor(Node* node);
 
 Node* TreeDepthSearch(Node* node, char* searchvar);
 

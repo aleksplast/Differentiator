@@ -1,3 +1,6 @@
+#ifndef COMMON_H
+#define COMMON_H
+
 enum Errors
 {
     NOERR = 0,      ///<No errors occured
@@ -5,3 +8,5 @@ enum Errors
     MEMERR,       ///<Error with memory
     FILERR        ///<Error with file
 };
+
+#endif //COMMON_H

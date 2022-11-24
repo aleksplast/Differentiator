@@ -4,10 +4,13 @@
 #include "recursivedescent.h"
 
 const char* s = NULL;
+int x = 0;
 
-int GetG(const char* str)
+int GetG(const char* str, const int var)
 {
     s = str;
+    x = var;
+
     int val = GetE();
     assert(*s == '\0');
 
@@ -62,8 +65,23 @@ int GetP()
         assert(*s == ')');
         s++;
     }
+    else if (*s == 'x')
+        val = GetV();
     else
         val = GetN();
+
+    return val;
+}
+
+int GetV()
+{
+    int val = 0;
+
+    if (*s == 'x')
+    {
+        val = x;
+        s++;
+    }
 
     return val;
 }
@@ -71,8 +89,15 @@ int GetP()
 int GetN()
 {
     int val = 0;
+    bool minus = false;
 
     const char* sOld = s;
+
+    if (*s == '-')
+        minus = GetM();
+
+    if (minus)
+        s++;
 
     while (*s >= '0' && *s <= '9')
     {
@@ -80,7 +105,22 @@ int GetN()
         s++;
     }
 
+    if (minus)
+        val = -val;
+
     assert(s != sOld);
 
     return val;
+}
+
+bool GetM()
+{
+    bool minus = false;
+    const char* snew = s - 1;
+    char prevchar = *snew;
+
+    if (prevchar != 'x' || prevchar <= '0' || prevchar >= '9')
+        minus = true;
+
+    return minus;
 }
