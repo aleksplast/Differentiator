@@ -1,13 +1,5 @@
-int GetG(const char* str, const int var);
+#ifndef RECURSIVE_DECENT_H
+#define RECURSIVE_DECENT_H
 
-int GetN();
 
-int GetE();
-
-int GetT();
-
-int GetP();
-
-int GetV();
-
-bool GetM();
+#endif //RECURSIVE_DECENT

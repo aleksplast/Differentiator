@@ -70,10 +70,10 @@ int TreeGraphDump (Tree* tree, int errors, int line, const char* func, const cha
 {
     DBG assert(tree != NULL);
 
-    char picture[15] = "picture";
-    sprintf(picture, "%d.dot", Piccounter);
-    char picturesrc[15] = "picture";
-    sprintf(picturesrc, "%d.png", Piccounter);
+    char picture[100] = "picture";
+    sprintf(picture, "pictures\\%d.dot", Piccounter);
+    char picturesrc[100] = "picture";
+    sprintf(picturesrc, "pictures\\%d.png", Piccounter);
 
     FILE* pic = fopen(picture, "w");
 
@@ -89,10 +89,12 @@ int TreeGraphDump (Tree* tree, int errors, int line, const char* func, const cha
     fclose(pic);
     Piccounter += 1;
 
-    char src[80] = "";
+    char src[100] = "";
     sprintf(src, "dot -Tpng %s -o %s", picture, picturesrc);
 
     system(src);
+
+    sprintf(picturesrc, "%d.png", Piccounter - 1);
 
     FILE* graphlog = fopen(tree->graphlog, "a");
 
@@ -117,7 +119,7 @@ int NodeDump(Node* node, int* counter, FILE* pic)
     if (node->rightchild)
         right = NodeDump(node->rightchild, counter, pic);
 
-    fprintf(pic, "\t\"node%d\" [shape = \"record\", style = \"filled\", fillcolor = \"green\", label = \"{",*counter);
+    fprintf(pic, "\t\"node%d\" [shape = \"record\", style = \"filled\", fillcolor = \"green\", label = \"{", *counter);
     TypePrint(pic, node->type);
     fprintf(pic, "|");
     if (node->optype)
@@ -204,7 +206,7 @@ int NodeDetor(Node* node)
         NodeDetor(node->leftchild);
 
     else if (node->rightchild)
-        NodeDetor(node->leftchild);
+        NodeDetor(node->rightchild);
 
     node->leftchild = NULL;
     node->rightchild = NULL;
@@ -244,7 +246,8 @@ int TreeDetor(Tree* tree)
 
     TREECHECK
 
-    NodeDetor(tree->anchor);
+    if (tree->anchor)
+        NodeDetor(tree->anchor);
 
     tree->size = -1;
     tree->graphlog = NULL;

@@ -1,5 +1,5 @@
-#define DL DiffNode(node->leftchild, phrases, out)
-#define DR DiffNode(node->rightchild, phrases, out)
+#define DL DiffNode(node->leftchild, phrases, var, out)
+#define DR DiffNode(node->rightchild, phrases, var, out)
 #define CL NodeCopy(node->leftchild)
 #define CR NodeCopy(node->rightchild)
 #define SUB(L, R) CreateNode(OP_TYPE, 0, OP_SUB, NULL, node->tree, node, L, R)
@@ -18,3 +18,5 @@
 #define IS_RVAL(value) (node->rightchild->type == NUM_TYPE) && (compare(node->rightchild->val, value) == 0)
 #define CREATENUM(num) CreateNode(NUM_TYPE, num, OP_UNKNOWN, NULL, node->tree, node, NULL, NULL)
 #define CREATEVAR(var) CreateNode(VAR_TYPE, 0, OP_UNKNOWN, var, node->tree, node, NULL, NULL)
+#define NEWNUM(num) CreateNode(NUM_TYPE, num, OP_UNKNOWN, NULL, NULL, node, NULL, NULL)
+#define NEWVAR(var) CreateNode(VAR_TYPE, 0, OP_UNKNOWN, var, NULL, node, NULL, NULL)

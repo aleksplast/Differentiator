@@ -1,95 +1,93 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include "recursivedescent.h"
+#include "differentiator.h"
 
 const char* s = NULL;
 int x = 0;
 
-int GetG(const char* str, const int var)
+Node* GetG(const char* str, const int var)
 {
     s = str;
     x = var;
 
-    int val = GetE();
+    Node* node = GetE();
     assert(*s == '\0');
 
-    return val;
+    return node;
 }
 
-int GetE()
+Node* GetE()
 {
-    int val = GetT();
+    Node* node = GetT();
 
     while (*s == '+' || *s == '-')
     {
         int op = *s;
         s++;
 
-        int val2 = GetT();
+        Node* nodeR = GetT();
         if (op == '+')
-            val += val2;
+            node = ADD(node, nodeR);
         else
-            val -= val2;
+            node = SUB(node, nodeR);
     }
 
-    return val;
+    return node;
 }
 
-int GetT()
+Node* GetT()
 {
-    int val = GetP();
+    Node* node = GetP();
 
     while (*s == '*' || *s == '/')
     {
         int op = *s;
         s++;
 
-        int val2 = GetP();
+        Node* nodeR = GetP();
         if (op == '*')
-            val *= val2;
+            node = MUL(node, nodeR);
         else
-            val /= val2;
+            node = DIV(node, nodeR);
     }
 
-    return val;
+    return node;
 }
 
-int GetP()
+Node* GetP()
 {
-    int val = 0;
+    Node* node = NULL;
     if (*s == '(')
     {
         s++;
-        val = GetE();
+        node = GetE();
         assert(*s == ')');
         s++;
     }
     else if (*s == 'x')
-        val = GetV();
+        node = GetV();
     else
-        val = GetN();
+        node = GetN();
 
-    return val;
+    return node;
 }
 
-int GetV()
+Node* GetV()
 {
-    int val = 0;
+    Node* node = 0;
 
     if (*s == 'x')
-    {
-        val = x;
         s++;
-    }
 
-    return val;
+    return NEWVAR("x");
 }
 
-int GetN()
+Node* GetN()
 {
     int val = 0;
     bool minus = false;
+    Node* node = NULL;
 
     const char* sOld = s;
 
@@ -110,7 +108,7 @@ int GetN()
 
     assert(s != sOld);
 
-    return val;
+    return NEWNUM(val);
 }
 
 bool GetM()
