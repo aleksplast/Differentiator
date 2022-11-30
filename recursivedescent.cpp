@@ -1,120 +1,231 @@
 #include <stdio.h>
 #include <assert.h>
-
+#include <ctype.h>
+#include <strings.h>
 #include "differentiator.h"
 
-const char* s = NULL;
 int x = 0;
+const int Cmdsize = 15;
 
-Node* GetG(const char* str, const int var)
+Node** LexicAnalizer(char* str)
 {
-    s = str;
-    x = var;
+    char** s = &str;
 
-    Node* node = GetE();
-    assert(*s == '\0');
+    Node** nodes = (Node**) calloc(strlen(str) + 2, sizeof(Node*));
 
-    return node;
+    Node** oldnodes = nodes;
+
+    StringAnalizer(s, &nodes);
+
+    return oldnodes;
 }
 
-Node* GetE()
+int StringAnalizer(char** s, Node*** nodes)
 {
-    Node* node = GetT();
+    double val = 0;
+    char cmd[40] = "";
+    int len = 0;
 
-    while (*s == '+' || *s == '-')
+    while(isspace(**s))
+        (*s)++;
+
+    while (**s != '\0')
     {
-        int op = *s;
-        s++;
-
-        Node* nodeR = GetT();
-        if (op == '+')
-            node = ADD(node, nodeR);
-        else
-            node = SUB(node, nodeR);
+        while(isspace(**s))
+            (*s)++;
+        if (**s == '+')
+        {
+            **nodes = CreateNode(OP_TYPE, 0, OP_ADD, NULL, NULL, NULL, NULL, NULL);
+            (*s)++;
+            (*nodes)++;
+        }
+        else if (**s == '-')
+        {
+            **nodes = CreateNode(OP_TYPE, 0, OP_SUB, NULL, NULL, NULL, NULL, NULL);
+            (*s)++;
+            (*nodes)++;
+        }
+        else if (**s == '*')
+        {
+            **nodes = CreateNode(OP_TYPE, 0, OP_MUL, NULL, NULL, NULL, NULL, NULL);
+            (*s)++;
+            (*nodes)++;
+        }
+        else if (**s == '/')
+        {
+            **nodes = CreateNode(OP_TYPE, 0, OP_DIV, NULL, NULL, NULL, NULL, NULL);
+            (*s)++;
+            (*nodes)++;
+        }
+        else if (**s == '^')
+        {
+            **nodes = CreateNode(OP_TYPE, 0, OP_POWER, NULL, NULL, NULL, NULL, NULL);
+            (*s)++;
+            (*nodes)++;
+        }
+        else if (**s == '(')
+        {
+            **nodes = CreateNode(OP_TYPE, 0, OP_OPBRC, NULL, NULL, NULL, NULL, NULL);
+            (*s)++;
+            (*nodes)++;
+        }
+        else if (**s == ')')
+        {
+            **nodes = CreateNode(OP_TYPE, 0, OP_CLBRC, NULL, NULL, NULL, NULL, NULL);
+            (*s)++;
+            (*nodes)++;
+        }
+        else if (sscanf(*s, "%lg%n", &val, &len) == 1)
+        {
+            **nodes = CreateNode(NUM_TYPE, val, OP_UNKNOWN, NULL, NULL, NULL, NULL, NULL);
+            (*s) += len;
+            (*nodes)++;
+        }
+        else if (sscanf(*s, "%[^()]%n", cmd, &len) == 1)
+        {
+            if (OperType optype = IsOper(cmd))
+                **nodes = CreateNode(OP_TYPE, 0, optype, NULL, NULL, NULL, NULL, NULL);
+            else
+                **nodes = CreateNode(VAR_TYPE, 0, OP_UNKNOWN, cmd, NULL, NULL, NULL, NULL);
+            *s += len;
+            (*nodes)++;
+        }
     }
 
+    **nodes = CreateNode(OP_TYPE, 0, OP_END, NULL, NULL, NULL, NULL, NULL);
+            (*s)++;
+            (*nodes)++;
+
+    return NOERR;
+}
+
+Node* GetG(Node** nodes)
+{
+    Node* node = GetE(&nodes);
+
     return node;
 }
 
-Node* GetT()
+Node* GetE(Node*** arr)
 {
-    Node* node = GetP();
+    Node* currnode = GetT(arr);
+    Node* nodeL = NULL;
 
-    while (*s == '*' || *s == '/')
+    while ((**arr)->optype == OP_ADD || (**arr)->optype == OP_SUB)
     {
-        int op = *s;
-        s++;
+        nodeL = currnode;
+        currnode = **arr;
+        (*arr)++;
 
-        Node* nodeR = GetP();
-        if (op == '*')
-            node = MUL(node, nodeR);
-        else
-            node = DIV(node, nodeR);
+        Node* nodeR = GetT(arr);
+        currnode->leftchild = nodeL;
+        currnode->rightchild = nodeR;
     }
 
-    return node;
+    return currnode;
 }
 
-Node* GetP()
+Node* GetT(Node*** arr)
+{
+    Node* currnode = GetPower(arr);
+    Node* nodeL = NULL;
+
+    while ((**arr)->optype == OP_MUL || (**arr)->optype == OP_DIV)
+    {
+        nodeL = currnode;
+        currnode = **arr;
+        (*arr)++;
+
+        Node* nodeR = GetPower(arr);
+        currnode->leftchild = nodeL;
+        currnode->rightchild = nodeR;
+    }
+
+    return currnode;
+}
+
+Node* GetPower(Node*** arr)
+{
+    Node* currnode = GetP(arr);
+    Node* nodeL = NULL;
+
+    while((**arr)->optype == OP_POWER)
+    {
+        nodeL = currnode;
+        currnode = **arr;
+        (*arr)++;
+        Node* nodeR = GetP(arr);
+        currnode->leftchild = nodeL;
+        currnode->rightchild = nodeR;
+    }
+
+    return currnode;
+}
+
+Node* GetF(Node*** arr)
 {
     Node* node = NULL;
-    if (*s == '(')
+    char cmd[Cmdsize] = "";
+    int len = 0;
+
+    if (((**arr)->optype || (**arr)->varvalue) && (**arr)->optype != OP_END && (**arr)->optype != OP_CLBRC && (**arr)->optype != OP_OPBRC)
     {
-        s++;
-        node = GetE();
-        assert(*s == ')');
-        s++;
+        node = **arr;
+        (*arr)++;
+        Node* nodeR = GetP(arr);
+
+        if (node->optype)
+            node->rightchild = nodeR;
+        else
+            node;
     }
-    else if (*s == 'x')
-        node = GetV();
     else
-        node = GetN();
+        Node* node = GetP(arr);
 
     return node;
 }
 
-Node* GetV()
+Node* GetP(Node*** arr)
 {
-    Node* node = 0;
-
-    if (*s == 'x')
-        s++;
-
-    return NEWVAR("x");
-}
-
-Node* GetN()
-{
-    int val = 0;
-    bool minus = false;
-    Node* node = NULL;
-
-    const char* sOld = s;
-
-    if (*s == '-')
-        minus = GetM();
-
-    if (minus)
-        s++;
-
-    while (*s >= '0' && *s <= '9')
+    Node* node = **arr;
+    if (node->optype == OP_OPBRC)
     {
-        val = 10 * val + *s - '0';
-        s++;
+        (*arr)++;
+        node = GetE(arr);
+        (*arr)++;
     }
+    else if (node->varvalue)
+        node = GetV(arr);
+    else if (node->val)
+        node = GetN(arr);
+    else
+        node = GetF(arr);
 
-    if (minus)
-        val = -val;
-
-    assert(s != sOld);
-
-    return NEWNUM(val);
+    return node;
 }
 
-bool GetM()
+Node* GetV(Node*** arr)
+{
+    Node* node = **arr;
+
+    (*arr)++;
+
+    return node;
+}
+
+Node* GetN(Node*** arr)
+{
+    Node* node = **arr;
+
+    (*arr)++;
+
+    return node;
+}
+
+bool GetM(char** s)
 {
     bool minus = false;
-    const char* snew = s - 1;
+    const char* snew = *s - 1;
     char prevchar = *snew;
 
     if (prevchar != 'x' || prevchar <= '0' || prevchar >= '9')

@@ -128,19 +128,27 @@ int NodePrint(Node* node);
 
 
 /////// Recursive descent
-Node* GetG(const char* str, const int var);
+Node* GetG(Node** nodes);
 
-Node* GetN();
+Node* GetN(Node*** arr);
 
-Node* GetE();
+Node* GetE(Node*** arr);
 
-Node* GetT();
+Node* GetT(Node*** arr);
 
-Node* GetP();
+Node* GetP(Node*** arr);
 
-Node* GetV();
+Node* GetV(Node*** arr);
 
-bool GetM();
+Node* GetPower(Node*** arr);
+
+Node* GetF(Node*** arr);
+
+bool GetM(Node*** arr);
+
+Node** LexicAnalizer(char* str);
+
+int StringAnalizer(char** s, Node*** nodes);
 
 /////////////////////////////////
 

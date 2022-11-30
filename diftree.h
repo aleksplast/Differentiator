@@ -40,6 +40,9 @@ enum OperType
     OP_ARCCTG       = 16,
     OP_SH           = 17,
     OP_CH           = 18,
+    OP_OPBRC        = 19,
+    OP_CLBRC        = 20,
+    OP_END          = 21,
 };
 
 struct Tree;
