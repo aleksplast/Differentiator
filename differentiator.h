@@ -20,6 +20,16 @@ struct Variable
     double inaccuracy;
 };
 
+struct Input
+{
+    char* equation;
+    char* variable;
+    double varvalue;
+    double leftborder;
+    double rightborder;
+    int order;
+};
+
 typedef poem Phrases;
 
 /////// MAIN /////////////
@@ -28,7 +38,7 @@ int DifferentiatorMain(char* input);
 
 Tree DiffFuncOnce(Tree* datatree, char* var, Phrases* diffphrases, Phrases* simpphrases, FILE* out);
 
-int MaclaurinSeries(Tree* datatree, Tree* difftree, char* var, Phrases* diffphrases, Phrases* simpphrases, FILE* out);
+int MaclaurinSeries(Tree* datatree, Tree* difftree, int order, char* var, Phrases* diffphrases, Phrases* simpphrases, FILE* out);
 
 int TangentEquation(Tree* datatree, Tree* difftree, double x, FILE* out);
 
@@ -42,13 +52,15 @@ int CreateGraphic(Tree* datatree, double left, double right, FILE* out);
 
 ////// Parser ////////////
 
-Tree DataParser(char* inputdata);
+Tree DataParser(char* input);
 
 int GetPhrases(Phrases* phrases, char* input);
 
 Variable* GetParameters(Phrases* phrases, char* input);
 
 int FillCurrNode(Node* currnode, char* input);
+
+Input ManageInput(Phrases* phrases, char* input);
 
 //////////////////////////
 

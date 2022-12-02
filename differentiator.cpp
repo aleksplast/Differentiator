@@ -10,7 +10,6 @@
 #include "differentiator.h"
 
 //TO DO LIST
-//Full inaccuracy
 
 char Econst[2] = "e";
 char Xconst[2] = "x";
@@ -22,19 +21,31 @@ const double EPSILON = 1e-10;
 static bool PrintTeX = true;
 const int RECOMENDSIZE = 50;
 
+#define SIMPTEXSTART(node)  if (PrintTeX)                                                                       \
+                            {                                                                                   \
+                                fprintf(out, "%s\n\n", phrases->Strings[rand()%(phrases->nlines)].ptr);     \
+                                TeXPrint(node, Aconst, out);                                                    \
+                            }
+
+#define SIMPTEXEND(node)    if (PrintTeX)                       \
+                            {                                   \
+                                fprintf(out, " = ");            \
+                                TeXPrint(node, Aconst, out);    \
+                                fprintf(out, "\n\n");           \
+                            }
+
 int DifferentiatorMain(char* input)
 {
-    Tree datatree = DataParser(input);
-
     setlocale(LC_ALL,"Rus");
 
     char diffphrases[STRSIZE] = "DiffBundles.txt";
     char simpphrases[STRSIZE] = "SimplifyBundles.txt";
     char parameter[STRSIZE] = "Parameters.txt";
 
-    double x = 0;
-    printf("Enter x\n");
-    scanf("%lg", &x);
+    Phrases inputdata = {};
+    Input data = ManageInput(&inputdata, input);
+
+    Tree datatree = DataParser(data.equation);
 
     Phrases diffbundles = {};
     GetPhrases(&diffbundles, diffphrases);
@@ -52,15 +63,15 @@ int DifferentiatorMain(char* input)
     PrepareTeXFile(out);
     TeXPrint(datatree.anchor, Aconst, out);
 
-    Tree difftree = DiffFuncOnce(&datatree, Xconst, &diffbundles, &simpbundles, out);
+    Tree difftree = DiffFuncOnce(&datatree, data.variable, &diffbundles, &simpbundles, out);
 
-    TangentEquation(&datatree, &difftree, x, out);
+    TangentEquation(&datatree, &difftree, data.varvalue, out);
 
-    CreateGraphic(&datatree, -8, 8, out);
+    CreateGraphic(&datatree, data.leftborder, data.rightborder, out);
 
     FullInaccuracy(&datatree, variables, parameters.nlines, &diffbundles, &simpbundles, out);
 
-    MaclaurinSeries(&datatree, &difftree, Xconst, &diffbundles, &simpbundles, out);
+    MaclaurinSeries(&datatree, &difftree, data.order, data.variable, &diffbundles, &simpbundles, out);
 
     TeXClose(out);
 
@@ -68,18 +79,38 @@ int DifferentiatorMain(char* input)
 
     free(parameters.Strings);
     free(diffbundles.Strings);
+    free(simpbundles.Strings);
 
     TreeDetor(&datatree);
     TreeDetor(&difftree);
 
     system("pdflatex  -output-directory=data data\\output.txt > data\\tex_log");
     system("del data\\output.log");
-    system("del data\\output.out");
     system("del data\\output.aux");
     system("del data\\tex_log");
     system("start data\\output.pdf");
 
     return NOERR;
+}
+
+Input ManageInput(Phrases* phrases, char* input)
+{
+    const char* mode = "r";
+    const char end = '\n';
+
+    TextReader(input, phrases, mode);
+
+    LinesSeparator(phrases, end);
+
+    Input data = {};
+    data.variable = (char*) calloc(STRSIZE, sizeof(char));
+    data.equation = phrases->Strings[0].ptr;
+
+    sscanf(phrases->Strings[2].ptr, "%s %lg", data.variable, &data.varvalue);
+    sscanf(phrases->Strings[3].ptr, "%lg %lg", &data.leftborder, &data.rightborder);
+    sscanf(phrases->Strings[4].ptr, "%d", &data.order);
+
+    return data;
 }
 
 int GetPhrases(Phrases* phrases, char* input)
@@ -106,7 +137,7 @@ Variable* GetParameters(Phrases* phrases, char* input)
     Variable* variables = (Variable*) calloc(phrases->nlines, sizeof(Variable));
 
     for (int i = 0; i < phrases->nlines; i++)
-        sscanf(phrases->Strings[i].ptr, "%s %lg %lg", variables[i].name, &variables[i].val, &variables->inaccuracy);
+        sscanf(phrases->Strings[i].ptr, "%s %lg %lg", variables[i].name, &variables[i].val, &variables[i].inaccuracy);
 
     return variables;
 }
@@ -170,56 +201,21 @@ bool IsOneArg(Node* node)
     return false;
 }
 
-Tree DataParser(char* inputdata)
+Tree DataParser(char* input)
 {
     Tree difftree = {};
-    FILE* data = fopen(inputdata, "r");
-    long size = FileSize(data);
-    char* input = (char*) calloc(size, sizeof(char));
-
-    fread(input, sizeof(char), size, data);
 
     char log[STRSIZE] = "pictures\\graphlog.htm";
 
-    TreeCtor(&difftree, UNKNOWN_TYPE, 0, OP_UNKNOWN, NULL, log);
+    Node** nodes = LexicAnalizer(input);
 
-    Node* currnode = difftree.anchor;
+    Node* node = GetG(nodes);
 
-    for (int counter = 0; counter < size; counter++)
-    {
-        while(isspace(*(input + counter)))
-            counter += 1;
+    TreeCtor(&difftree, NUM_TYPE, 0, OP_UNKNOWN, NULL, log);
+    difftree.anchor = node;
+    TreeGraphDump(&difftree, 0, __LINE__, __func__, __FILE__);
 
-        if (*(input + counter) == ')')
-        {
-            currnode = currnode->ancestor;
-            continue;
-        }
-        else if (*(input + counter) == '(')
-        {
-            if (currnode->leftchild)
-            {
-                AddRightChild(&difftree, currnode);
-                currnode = currnode->rightchild;
-                continue;
-            }
-            else
-            {
-                AddLeftChild(&difftree, currnode);
-                currnode = currnode->leftchild;
-                continue;
-            }
-        }
-        else
-        {
-            counter += FillCurrNode(currnode, input + counter);
-        }
-    }
-
-    difftree.anchor = difftree.anchor->leftchild;
-    free(difftree.anchor->ancestor);
-    difftree.anchor->ancestor = NULL;
-    difftree.size--;
+    CreateAncestor(difftree.anchor, NULL, &difftree);
 
     return difftree;
 }
@@ -377,12 +373,14 @@ Node* DiffNode(Node* node, Phrases* phrases, char* var, FILE* out)
             break;
     }
 
+    CreateAncestor(newnode, newnode, node->tree);
+
     if (PrintTeX)
     {
-        fprintf(out, "%s\n\n", phrases->Strings[rand()%(phrases->nlines - 2)].ptr);
+        fprintf(out, "%s\n\n", phrases->Strings[rand()%(phrases->nlines)].ptr);
         fprintf(out, "(");
         TeXPrint(node, Aconst, out);
-        fprintf(out, ")'");
+        fprintf(out, ")$'$");
         fprintf(out, " = ");
         TeXPrint(newnode, Aconst, out);
         fprintf(out, "\n\n");
@@ -501,7 +499,7 @@ int SimplifyConstantNode(Node* node, Phrases* phrases, FILE* out)
 
     if (PrintTeX)
     {
-        fprintf(out, "%s\n\n", phrases->Strings[rand()%(phrases->nlines - 1)].ptr);
+        fprintf(out, "%s\n\n", phrases->Strings[rand()%(phrases->nlines)].ptr);
         TeXPrint(node, Aconst, out);
     }
 
@@ -557,12 +555,6 @@ int CheckNDeleteNode(Node* node, Phrases* phrases, FILE* out)
     if (!node->leftchild || !node->rightchild)
         return NOERR;
 
-    if (PrintTeX)
-    {
-        fprintf(out, "%s\n\n", phrases->Strings[rand()%(phrases->nlines - 1)].ptr);
-        TeXPrint(node, Aconst, out);
-    }
-
     if (node->rightchild->type == NUM_TYPE && (node->optype == OP_ADD || node->optype == OP_MUL))
     {
         Node* temp = node->rightchild;
@@ -571,31 +563,52 @@ int CheckNDeleteNode(Node* node, Phrases* phrases, FILE* out)
     }
 
     if (IS_OP(OP_MUL) && IS_LVAL(1))
+    {
+        SIMPTEXSTART(node)
         ChangeIntoChild(node, RIGHT);
+        SIMPTEXEND(node->rightchild)
+    }
 
     else if (IS_OP(OP_MUL) && IS_LVAL(0))
+    {
+        SIMPTEXSTART(node)
         ChangeNodeIntoNum(node, 0);
+        SIMPTEXEND(node)
+    }
 
     else if (IS_OP(OP_ADD) && IS_LVAL(0))
+    {
+        SIMPTEXSTART(node)
         ChangeIntoChild(node, RIGHT);
+        SIMPTEXEND(node->rightchild)
+    }
 
     else if (IS_OP(OP_SUB) && IS_LVAL(0))
+    {
+        SIMPTEXSTART(node)
         ChangeIntoChild(node, RIGHT);
+        SIMPTEXEND(node->rightchild)
+    }
 
     else if (IS_OP(OP_POWER) && IS_RVAL(0))
+    {
+        SIMPTEXSTART(node)
         ChangeNodeIntoNum(node, 1);
+        SIMPTEXEND(node)
+    }
 
     else if (IS_OP(OP_POWER) && IS_RVAL(1))
+    {
+        SIMPTEXSTART(node)
         ChangeIntoChild(node, LEFT);
+        SIMPTEXEND(node->leftchild)
+    }
 
     else if (IS_OP(OP_DIV) && IS_LVAL(0))
-        ChangeNodeIntoNum(node, 0);
-
-    if (PrintTeX)
     {
-        fprintf(out, " = ");
-        TeXPrint(node, Aconst, out);
-        fprintf(out, "\n\n");
+        SIMPTEXSTART(node)
+        ChangeNodeIntoNum(node, 0);
+        SIMPTEXEND(node)
     }
 
     return NOERR;
@@ -814,7 +827,8 @@ Tree DiffFuncOnce(Tree* datatree, char* var, Phrases* diffphrases, Phrases* simp
     Tree difftree = {};
     char difftreelog[STRSIZE] = "pictures\\difftreelog.htm";
     TreeCtor(&difftree, UNKNOWN_TYPE, 0, OP_UNKNOWN, NULL, difftreelog);
-    if (PrintTeX) fprintf(out, "\n\nпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ-пїЅпїЅпїЅпїЅпїЅпїЅ\n\n");
+    if (PrintTeX)
+        fprintf(out, "\n\nПродифференцируем же эту функцию во имя Бога-Машины\n\n");
 
     Node* newanchor = DiffNode(datatree->anchor, diffphrases, var, out);
 
@@ -826,7 +840,7 @@ Tree DiffFuncOnce(Tree* datatree, char* var, Phrases* diffphrases, Phrases* simp
 
     if (PrintTeX)
     {
-        fprintf(out, "пїЅпїЅпїЅпїЅ, пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ:\n\n");
+        fprintf(out, "Итак, с благословлением Омниссии мы получили:\n\n");
         fprintf(out, "(");
         TeXPrint(datatree->anchor, Aconst, out);
         fprintf(out, ")' = ");
@@ -843,28 +857,31 @@ double FullInaccuracy(Tree* datatree, Variable* variables, long varsize, Phrases
 {
     double inacurracy = 0;
     PrintTeX = false;
-    for (int i = 0; i < varsize; i++)
+    for (int i = 1; i < varsize; i++)
     {
         Tree difftree = DiffFuncOnce(datatree, variables[i].name, diffphrases, simpphrases, out);
+        TreeGraphDump(&difftree, 0, __LINE__, __func__, __FILE__);
         PrepareCalcNode(difftree.anchor, variables, varsize);
+
+        TreeGraphDump(&difftree, 0, __LINE__, __func__, __FILE__);
 
         double partinac = CalculateNode(difftree.anchor, variables[i].val);
 
         inacurracy += partinac * partinac * variables[i].inaccuracy * variables[i].inaccuracy;
-
         NodeDetor(difftree.anchor);
     }
 
     inacurracy = sqrt(inacurracy);
 
-    fprintf(out, "пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ $%lg$\n\n", inacurracy);
+    fprintf(out, "2. Полная погрешность данного измерения составляет $%lg$\n\n", inacurracy);
 
     return inacurracy;
 }
 
 int TangentEquation(Tree* datatree, Tree* difftree, double x, FILE* out)
 {
-    fprintf(out, "пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅ $x = %0.2lg$, пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ\n\n", x);
+    fprintf(out, "\\section{Другая полезная информация}\n\n");
+    fprintf(out, "1. Для проведения экстерминатуса очевидно необходимо знать уравнение касательной в точке $x = %0.2lg$, так еретиков останется меньше\n\n", x);
 
     double derval = CalculateNode(difftree->anchor, x);
     double val = CalculateNode(datatree->anchor, x);
@@ -874,15 +891,13 @@ int TangentEquation(Tree* datatree, Tree* difftree, double x, FILE* out)
     return NOERR;
 }
 
-int MaclaurinSeries(Tree* datatree, Tree* difftree, char* var, Phrases* diffphrases, Phrases* simpphrases, FILE* out)
+int MaclaurinSeries(Tree* datatree, Tree* difftree, int order, char* var, Phrases* diffphrases, Phrases* simpphrases, FILE* out)
 {
-    int order = 0;
     PrintTeX = false;
-    printf("Enter the order of series\n");
-    scanf("%d", &order);
 
     char serieslog[STRSIZE] = "pictures\\serieslog.htm";
 
+    fprintf(out, "\n\n 3. В М36.567 Верховный совет Терры признал Маклорена еретиком, но у нас свои законы, разложим же эту функцию по его формуле\n\n");
     Tree seriestree = {};
     TreeCtor(&seriestree, NUM_TYPE, CalculateNode(datatree->anchor, 0), OP_UNKNOWN, NULL, serieslog);
 
@@ -933,12 +948,15 @@ int CreateGraphic(Tree* datatree, double left, double right, FILE* out)
     for (double x = left; x < right; x += 0.02)
         fprintf(graphic, "%lg %lg\n", x, CalculateNode(datatree->anchor, x));
 
-    system("py graphic.py");
+    fclose(graphic);
+
+    system("py C:\\Users\\USER\\Documents\\Differentiator\\graphic.py");
+
     fprintf(out,    "\\begin{figure}[h!]\n"
                     "\\begin{center}\n"
                     "\\includegraphics{graphic}\n"
                     "\\end{center}\n"
-                    "\\caption{пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ}\n"
+                    "\\caption{График количества еретиков}\n"
                     "\\end{figure}\n\n");
 
     return NOERR;
@@ -947,14 +965,14 @@ int CreateGraphic(Tree* datatree, double left, double right, FILE* out)
 int Priority(Node* node)
 {
     if (node->type != OP_TYPE)
-        return NOERR;
+        return 0;
 
     if (node->optype == OP_ADD || node->optype == OP_SUB)
         return 1;
     else if (node->optype == OP_MUL || node->optype == OP_DIV)
         return 2;
     else
-        return -1;
+        return 3;
 
     return NOERR;
 }
@@ -998,7 +1016,7 @@ int TeXPrint(Node* node, char* repl, FILE* out)
         node->rightchild = CREATEVAR(repl);
         fprintf(out, " $ ");
         TeXNodePrint(node, node, out);
-        fprintf(out, "\n\n$пїЅпїЅпїЅ %c = $ ", replace);
+        fprintf(out, "\n\n$Где %c = $ ", replace);
         *repl = (char)(*repl +  1);
         TeXPrint(right, repl, out);
         fprintf(out, "\n\n%c = ", replace - 1);
@@ -1011,7 +1029,7 @@ int TeXPrint(Node* node, char* repl, FILE* out)
         fprintf(out, " $ ");
         TeXNodePrint(node, node, out);
         fprintf(out, " $ ");
-        fprintf(out, "\n\nпїЅпїЅпїЅ $%c = $ ", replace);
+        fprintf(out, "\n\nГде $%c = $ ", replace);
         *repl = (char)(*repl +  1);
         TeXPrint(left, repl, out);
     }
@@ -1021,7 +1039,7 @@ int TeXPrint(Node* node, char* repl, FILE* out)
         fprintf(out, " $ ");
         TeXNodePrint(node, node, out);
         *repl =(char)(*repl +  1);
-        fprintf(out, " $\n\nпїЅпїЅпїЅ $ %c = $ ", replace);
+        fprintf(out, " $\n\nГде $ %c = $ ", replace);
         TeXPrint(right, repl, out);
     }
 
@@ -1065,7 +1083,11 @@ int TeXDataStartPrint(Node* startnode, Node* node, FILE* out)
                 fprintf(out, "\\frac{");
             else if (node->optype >= 5)
                 break;
-            else if (node->ancestor && Priority(node) >= Priority(node->ancestor))
+            else if (node->ancestor && Priority(node) >= Priority(node->ancestor) && Priority(node) > 1)
+                break;
+            else if (node->ancestor && node->optype == node->ancestor->optype)
+                break;
+            else if (node->ancestor && node->ancestor->optype >= 5)
                 break;
             else
                 fprintf(out, "(");
@@ -1106,46 +1128,46 @@ int TeXDataPrint(Node* node, FILE* out)
                     fprintf(out, "}{");
                     break;
                 case OP_COS:
-                    fprintf(out, "\\cos{");
+                    fprintf(out, "\\cos(");
                     break;
                 case OP_SIN:
-                    fprintf(out, "\\sin{");
+                    fprintf(out, "\\sin(");
                     break;
                 case OP_POWER:
                     fprintf(out, "^{");
                     break;
                 case OP_LN:
-                    fprintf(out, "\\ln{");
+                    fprintf(out, "\\ln(");
                     break;
                 case OP_LOG:
-                    fprintf(out, "\\log{");
+                    fprintf(out, "\\log(");
                     break;
                 case OP_TG:
-                    fprintf(out, "\\tg{");
+                    fprintf(out, "\\tg(");
                     break;
                 case OP_CTG:
-                    fprintf(out, "\\ctg{");
+                    fprintf(out, "\\ctg(");
                     break;
                 case OP_SQRT:
                     fprintf(out, "\\sqrt{");
                     break;
                 case OP_ARCSIN:
-                    fprintf(out, "\\arcsin{");
+                    fprintf(out, "\\arcsin(");
                     break;
                 case OP_ARCCOS:
-                    fprintf(out, "\\arccos{");
+                    fprintf(out, "\\arccos(");
                     break;
                 case OP_ARCTG:
-                    fprintf(out, "\\arctg{");
+                    fprintf(out, "\\arctg(");
                     break;
                 case OP_ARCCTG:
-                    fprintf(out, "\\arcctg{");
+                    fprintf(out, "\\arcctg(");
                     break;
                 case OP_SH:
-                    fprintf(out, "\\sinh{");
+                    fprintf(out, "\\sinh(");
                     break;
                 case OP_CH:
-                    fprintf(out, "\\cosh{");
+                    fprintf(out, "\\cosh(");
                     break;
                 case OP_UNKNOWN:
                     break;
@@ -1164,7 +1186,7 @@ int TeXDataPrint(Node* node, FILE* out)
 
 int TeXDataEndPrint(Node* startnode, Node* node, FILE* out)
 {
-    if (node == startnode && !IsOneArg(node) && node->optype != OP_POWER)
+    if (node == startnode && !IsOneArg(node) && node->optype != OP_POWER && node->optype != OP_DIV)
         return NOERR;
 
     switch (node->type)
@@ -1175,9 +1197,15 @@ int TeXDataEndPrint(Node* startnode, Node* node, FILE* out)
             break;
         case OP_TYPE:
         {
-            if (node->optype == OP_DIV || node->optype >= 5)
+            if (node->optype == OP_DIV || node->optype == OP_POWER || node->optype == OP_SQRT)
                 fprintf(out, "}");
-            else if (node->ancestor && Priority(node) >= Priority(node->ancestor))
+            else if (node->optype >= 5)
+                fprintf(out, ")");
+            else if (node->ancestor && Priority(node) >= Priority(node->ancestor) && Priority(node) > 1)
+                break;
+            else if (node->ancestor && node->optype == node->ancestor->optype)
+                break;
+            else if (node->ancestor && node->ancestor->optype >= 5)
                 break;
             else
                 fprintf(out, ")");
@@ -1224,52 +1252,61 @@ int PrepareTeXFile(FILE* out)
                     "\\begin{titlepage}                                                          \n"
                     "	\\begin{center}                                                         \n"
                     "		{                                                                   \n"
-                    "        \\large пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ-пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ}                     \n"
+                    "        \\large МОСКОВСКИЙ ФИЗИКО-ТЕХНИЧЕСКИЙ ИНСТИТУТ}                     \n"
                     "	\\end{center}                                                           \n"
                     "	\\begin{center}                                                         \n"
-                    "		{\\large пїЅпїЅпїЅпїЅпїЅпїЅ-пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ}       \n"
+                    "		{\\large Физтех-школа радиотехники и компьютерных технологий}       \n"
                     "	\\end{center}                                                           \n"
                     "                                                                            \n"
                     "                                                                            \n"
                     "	\\vspace{4.5cm}                                                         \n"
                     "	{\\huge                                                                 \n"
                     "		\\begin{center}                                                     \n"
-                    "			{\\bf пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ}\\         \n"
+                    "			{\\bf Дифференцирование функции по заветам Механикус}\\         \n"
                     "		\\end{center}                                                       \n"
                     "	}                                                                       \n"
                     "	\\vspace{2cm}                                                           \n"
                     "	\\begin{flushright}                                                     \n"
-                    "		{\\LARGE пїЅпїЅпїЅпїЅпїЅ:\\\\ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ \\\\       \n"
+                    "		{\\LARGE АВТОР:\\ Магос Техникус Александр Пластинин \\ \\\\       \n"
                     "			\\vspace{0.2cm}}                                                \n"
                     "	\\end{flushright}                                                       \n"
                     "	\\vspace{8cm}                                                           \n"
                     "\\end{titlepage}            \n"
                     "\n");
 
-    fprintf(out, "\\section{пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ}\n"
-            "пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ..\n\n"
-            "пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ, пїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ. пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ-пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ, пїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ: пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.n\n"
-            "пїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ.\n\n"
-            "пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ.\n\n");
-    fprintf(out,    "\\section{пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ}\n\n");
-    fprintf(out, "пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ \n\n");
+    fprintf(out, "\\section{Введение}\n"
+            "Третье тысячелетие.\n\n"
+            "Уже более трех веков Матан недвижим на Золотом Троне Наук.\n\n"
+            "Он — Повелитель Человечества и властелин мириадов людей, завоеванных могуществом Его неисчислимых функций.\n\n"
+            "Он — полутруп, неуловимую искру жизни в котором поддерживают древние знания, и ради этого ежедневно приносится в жертву тысяча душ. И поэтому Владыка Человечества никогда не умирает по-настоящему.\n\n"
+            "Даже в своем нынешнем состоянии Матан продолжает миссию, для которой появился на свет.\n\n"
+            "Могучие боевые математики пересекают кишащий демонами обычный мир, и путь этот освещен Физтехом, зримым проявлением духовной воли Матана.\n\n"
+            "Огромные армии сражаются во имя Его на бесчисленных полях тетрадей.\n\n"
+            "Величайшие среди его солдат — преподы матана, математические десантники, генетически улучшенные супервоины.\n\n"
+            "У них много товарищей по оружию: Аспирантская Гвардия и бесчисленные Силы Студенческой Обороны, вечно бдительный Деканат и техножрецы Адептус Информатикус.n\n"
+            "Но, несмотря на все старания, их сил едва хватает, чтобы сдерживать извечную угрозу со стороны физиков, химиков и биологов.\n\n"
+            "Быть физтехом в такое время — значит быть одним из тысяч.\n\n"
+            "Это значит жить при самом жестоком и кровавом режиме, который только можно представить.\n\n"
+            "Забудьте о достижениях общесоса и проги, ибо многое забыто и никогда не будет открыто заново.\n\n"
+            "Забудьте о перспективах, обещанных прогрессом, о взаимопонимании, ибо во мраке МФТИ есть только война.\n\n"
+            "Нет мира среди аудиторий — лишь вечная бойня и кровопролитие, да смех жаждущих фопфов.\n\n");
+    fprintf(out,    "\\section{Дифференциация}\n\n");
+    fprintf(out, "Функция количества еретиков от количества пар матана представляется как \n\n");
     return NOERR;
 }
 
 int TeXClose(FILE* out)
 {
-    fprintf(out, "\n\\end{document}");
+    fprintf (out, "\n\nВ результате мы видим, как ересь зависит от количества пар матана, что делать с этой информацией решаете вы сами\n\n");
+
+    fprintf (out, "\\section{Список Литературы}\n\n");
+    fprintf (out,   "1. https://github.com/aleksplast/Differentiator\n\n"
+                    "2. Л.Н. Знаменская Дифференциальное и интегральное исчисления. Функции одной переменной\n\n"
+                    "3. Кудрявцев Л.Д., Кутасов А.Д., Чехлов В.И., Шабунин М.И. Сборник задач по математическому анализу. Том 1. Предел. Непрерывность. Дифференцируемость Учеб пособие/ Под ред Л Д Кудрявцева — 2-е изд , перераб — М ФИЗМАТЛИТ, 2003 — 496 с —ISBN 5-9221-0306-7\n\n"
+                    "4. Warhammer 40 000: Core Book (ENG) 60 04 01 99 142 Printed by CC in China\n\n"
+            );
+
+    fprintf (out, "\\end{document}");
 
     return NOERR;
 }
@@ -1285,96 +1322,6 @@ int compare(const double a, const double b)
         return 1;
     if ((a-b) < EPSILON)
         return -1;
-
-    return NOERR;
-}
-
-int DataPrint(Node* node, FILE* out)
-{
-    switch (node->type)
-    {
-        case NUM_TYPE:
-            fprintf(out, "{%.0lf}", node->val);
-            break;
-        case VAR_TYPE:
-            fprintf(out, "{%s}", node->varvalue);
-            break;
-        case OP_TYPE:
-        {
-            if (node->optype == OP_COS)
-                break;
-            if (node->optype == OP_SIN)
-                break;
-            else
-                fprintf(out, "(");
-            switch (node->optype)
-            {
-                case OP_ADD:
-                    fprintf(out, "+");
-                    break;
-                case OP_SUB:
-                    fprintf(out, "-");
-                    break;
-                case OP_MUL:
-                    fprintf(out, "*");
-                    break;
-                case OP_DIV:
-                    fprintf(out, "/");
-                    break;
-                case OP_COS:
-                    fprintf(out, "cos");
-                    break;
-                case OP_SIN:
-                    fprintf(out, "sin");
-                    break;
-                case OP_POWER:
-                    fprintf(out, "^");
-                    break;
-                case OP_TG:
-                    fprintf(out, "tg");
-                    break;
-                case OP_CTG:
-                    fprintf(out, "ctg");
-                    break;
-                case OP_LN:
-                    fprintf(out, "ln");
-                    break;
-                case OP_LOG:
-                    fprintf(out, "log");
-                    break;
-                case OP_UNKNOWN:
-                    fprintf(out, "UNKNOWN OP\n");
-                    break;
-                default:
-                    fprintf(out, "UNKNOWN OP\n");
-                    break;
-            }
-            break;
-        case UNKNOWN_TYPE:
-            break;
-        default:
-            break;
-        }
-    }
-
-    return NOERR;
-}
-
-int NodePrint(Node* node)
-{
-    assert(node != NULL);
-
-    printf("(");
-
-    if (node->leftchild)
-        NodePrint(node->leftchild);
-
-    DataPrint(node, stdout);
-
-    if (node->rightchild)
-        NodePrint(node->rightchild);
-
-    printf(")");
 
     return NOERR;
 }

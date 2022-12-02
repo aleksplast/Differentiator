@@ -4,7 +4,6 @@
 #include <strings.h>
 #include "differentiator.h"
 
-int x = 0;
 const int Cmdsize = 15;
 
 Node** LexicAnalizer(char* str)
@@ -23,7 +22,6 @@ Node** LexicAnalizer(char* str)
 int StringAnalizer(char** s, Node*** nodes)
 {
     double val = 0;
-    char cmd[40] = "";
     int len = 0;
 
     while(isspace(**s))
@@ -31,6 +29,7 @@ int StringAnalizer(char** s, Node*** nodes)
 
     while (**s != '\0')
     {
+        char* cmd = (char*) calloc(Cmdsize, sizeof(char));
         while(isspace(**s))
             (*s)++;
         if (**s == '+')
@@ -81,7 +80,7 @@ int StringAnalizer(char** s, Node*** nodes)
             (*s) += len;
             (*nodes)++;
         }
-        else if (sscanf(*s, "%[^()]%n", cmd, &len) == 1)
+        else if (sscanf(*s, "%[^+-*/^()]%n", cmd, &len) == 1)
         {
             if (OperType optype = IsOper(cmd))
                 **nodes = CreateNode(OP_TYPE, 0, optype, NULL, NULL, NULL, NULL, NULL);
@@ -93,8 +92,8 @@ int StringAnalizer(char** s, Node*** nodes)
     }
 
     **nodes = CreateNode(OP_TYPE, 0, OP_END, NULL, NULL, NULL, NULL, NULL);
-            (*s)++;
-            (*nodes)++;
+    (*s)++;
+    (*nodes)++;
 
     return NOERR;
 }

@@ -79,7 +79,6 @@ int TreeGraphDump (Tree* tree, int errors, int line, const char* func, const cha
 
     fprintf(pic, "strict graph {\n");
     fprintf(pic, "\trankdir = TB\n");
-    fprintf(pic, "\t\"info\" [shape = \"record\", style = \"filled\", fillcolor = \"grey\", label = \"{size = %d|anchor = %p}\"]\n", tree->size, tree->anchor);
 
     int counter = 1;
     NodeDump(tree->anchor, &counter, pic);
@@ -205,7 +204,7 @@ int NodeDetor(Node* node)
     if (node->leftchild)
         NodeDetor(node->leftchild);
 
-    else if (node->rightchild)
+    if (node->rightchild)
         NodeDetor(node->rightchild);
 
     node->leftchild = NULL;
@@ -244,7 +243,7 @@ int TreeDetor(Tree* tree)
 {
     DBG assert (tree != NULL);
 
-    TREECHECK
+//    TREECHECK
 
     if (tree->anchor)
         NodeDetor(tree->anchor);
